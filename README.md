@@ -117,3 +117,7 @@ Look into the `abpoa/examples/` directory to see examples on how to use the API:
 - `graph_io.rs`: exporting MSA/GFA, restoring graphs, read names, and reverse‑complement aware MSA (`set_ambiguous_strand`).
 
 The wrapper exposes a more than the examples show, feel free to explore.
+
+## Disclaimer
+
+This crate provides Rust bindings to the C library [abPOA](https://github.com/yangao07/abPOA). The bindings in this repository are licensed under the MIT License (see LICENSE). abPOA is licensed under the MIT License; see NOTICE for the upstream copyright and license text.
