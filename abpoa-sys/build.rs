@@ -47,7 +47,7 @@ fn main() {
     base_build.warnings(false);
     base_build.include(&include_dir);
     base_build.include(&src_dir);
-    base_build.flag_if_supported("-std=c99");
+    base_build.flag_if_supported("-std=gnu99");
     base_build.flag_if_supported("-Wno-unused-function");
     base_build.flag_if_supported("-Wno-misleading-indentation");
     base_build.flag_if_supported("-Wno-unused-parameter");
@@ -107,7 +107,7 @@ fn main() {
             .warnings(false)
             .include(&include_dir)
             .include(&src_dir)
-            .flag_if_supported("-std=c99")
+            .flag_if_supported("-std=gnu99")
             .flag_if_supported("-Wno-unused-function")
             .flag_if_supported("-Wno-misleading-indentation")
             .flag_if_supported("-Wno-unused-parameter")
@@ -162,7 +162,7 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf) {
         .include(include_dir)
         .include(src_dir)
         .define("ABPOA_SIMD_DISPATCH", None)
-        .flag_if_supported("-std=c99")
+        .flag_if_supported("-std=gnu99")
         .flag_if_supported("-Wno-unused-function")
         .flag_if_supported("-Wno-misleading-indentation")
         .flag_if_supported("-Wno-unused-parameter")
@@ -177,7 +177,7 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf) {
             .include(include_dir)
             .include(src_dir)
             .define("ABPOA_SIMD_DISPATCH", None)
-            .flag_if_supported("-std=c99")
+            .flag_if_supported("-std=gnu99")
             .flag_if_supported("-Wno-unused-function")
             .flag_if_supported("-Wno-misleading-indentation")
             .flag_if_supported("-Wno-unused-parameter")
