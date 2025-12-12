@@ -12,6 +12,7 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_triple = env::var("TARGET").unwrap_or_default();
     let is_x86 = matches!(target_arch.as_str(), "x86_64" | "x86" | "i686");
+    let is_linux = target_os == "linux";
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let abpoa_dir = manifest_dir.join("abPOA");
@@ -47,7 +48,10 @@ fn main() {
     base_build.warnings(false);
     base_build.include(&include_dir);
     base_build.include(&src_dir);
-    base_build.flag_if_supported("-std=gnu99");
+    if is_linux {
+        base_build.define("_GNU_SOURCE", None);
+    }
+    base_build.flag_if_supported("-std=c99");
     base_build.flag_if_supported("-Wno-unused-function");
     base_build.flag_if_supported("-Wno-misleading-indentation");
     base_build.flag_if_supported("-Wno-unused-parameter");
@@ -60,6 +64,9 @@ fn main() {
         "-Wno-unused-parameter".into(),
         "-Wno-sign-compare".into(),
     ];
+    if is_linux {
+        clang_args.push("-D_GNU_SOURCE".into());
+    }
     let use_simde = !is_x86;
     if use_simde {
         base_build.define("USE_SIMDE", None);
@@ -103,15 +110,17 @@ fn main() {
     // If not on x86, build the single SIMD object (SIMDe path) with arch-specific flags
     if !use_dispatch {
         let mut align_build = cc::Build::new();
-        align_build
-            .warnings(false)
-            .include(&include_dir)
-            .include(&src_dir)
-            .flag_if_supported("-std=gnu99")
-            .flag_if_supported("-Wno-unused-function")
-            .flag_if_supported("-Wno-misleading-indentation")
-            .flag_if_supported("-Wno-unused-parameter")
-            .flag_if_supported("-Wno-sign-compare");
+        align_build.warnings(false);
+        align_build.include(&include_dir);
+        align_build.include(&src_dir);
+        if is_linux {
+            align_build.define("_GNU_SOURCE", None);
+        }
+        align_build.flag_if_supported("-std=c99");
+        align_build.flag_if_supported("-Wno-unused-function");
+        align_build.flag_if_supported("-Wno-misleading-indentation");
+        align_build.flag_if_supported("-Wno-unused-parameter");
+        align_build.flag_if_supported("-Wno-sign-compare");
         if use_simde {
             align_build.define("USE_SIMDE", None);
             align_build.define("SIMDE_ENABLE_NATIVE_ALIASES", None);
@@ -129,7 +138,7 @@ fn main() {
         align_build.compile("abpoa_align_simd");
     } else {
         // For x86/x86_64, also build the runtime-dispatch variants and dispatcher to match upstream
-        build_dispatch_variants(&include_dir, &src_dir);
+        build_dispatch_variants(&include_dir, &src_dir, is_linux);
     }
 
     // abPOA depends on zlib and libm; pthreads is part of libSystem on macOS
@@ -154,7 +163,7 @@ fn find_header(include_paths: &[PathBuf]) -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf) {
+fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf, is_linux: bool) {
     // Dispatcher (CPUID-based)
     let mut dispatch = cc::Build::new();
     dispatch
@@ -162,12 +171,15 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf) {
         .include(include_dir)
         .include(src_dir)
         .define("ABPOA_SIMD_DISPATCH", None)
-        .flag_if_supported("-std=gnu99")
+        .flag_if_supported("-std=c99")
         .flag_if_supported("-Wno-unused-function")
         .flag_if_supported("-Wno-misleading-indentation")
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-sign-compare")
         .file(src_dir.join("abpoa_dispatch_simd.c"));
+    if is_linux {
+        dispatch.define("_GNU_SOURCE", None);
+    }
     dispatch.compile("abpoa_dispatch");
 
     // Helper to compile a single SIMD variant of abpoa_align_simd.c with the given flags.
@@ -177,11 +189,14 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf) {
             .include(include_dir)
             .include(src_dir)
             .define("ABPOA_SIMD_DISPATCH", None)
-            .flag_if_supported("-std=gnu99")
+            .flag_if_supported("-std=c99")
             .flag_if_supported("-Wno-unused-function")
             .flag_if_supported("-Wno-misleading-indentation")
             .flag_if_supported("-Wno-unused-parameter")
             .flag_if_supported("-Wno-sign-compare");
+        if is_linux {
+            b.define("_GNU_SOURCE", None);
+        }
         for f in extra_flags {
             b.flag_if_supported(f);
         }
