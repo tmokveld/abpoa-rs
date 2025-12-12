@@ -1,0 +1,119 @@
+# abpoa-rs
+
+Rust bindings and wrapper for the [abPOA](https://github.com/yangao07/abPOA) partial order aligner, not related to: https://github.com/broadinstitute/abpoa-rs.
+
+The wrapper lives in the `abpoa` crate, the raw FFI bindings are available as `abpoa::sys`.
+
+## Quick start
+
+```rust
+use abpoa::{Aligner, OutputMode, Parameters, SequenceBatch};
+
+fn main() -> abpoa::Result<()> {
+    let params = Parameters::new()?;
+
+    let mut aligner = Aligner::with_params(params)?;
+    let sequences = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
+    let result = aligner.msa(
+        SequenceBatch::from_sequences(&sequences),
+        OutputMode::consensus_and_msa(),
+    )?;
+    println!("Consensus: {}", result.clusters[0].consensus);
+    Ok(())
+}
+```
+
+`Parameters` owns all alignment/scoring settings, create it with `Parameters::new()` (defaults)
+or `Parameters::configure()` if you want to tweak values before using it. The aligner owns its parameters, configure them up front and pass them into
+`Aligner::with_params`.
+
+Minimal configuration example:
+
+```rust
+use abpoa::{Aligner, AlignMode, ConsensusAlgorithm, OutputMode, Parameters, Scoring, SequenceBatch};
+
+let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
+
+let mut params = Parameters::configure()?;
+params
+    .set_align_mode(AlignMode::Global)
+    .set_scoring_scheme(Scoring::affine(2, 4, 4, 1))?
+    .set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.0)?;
+
+let mut aligner = Aligner::with_params(params)?;
+let result = aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::consensus_only())?;
+```
+
+## Rust wrapper API
+
+The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The main parts are:
+
+- `Aligner`: stateful wrapper around abPOA POA graph. Use it to run alignments, grow/reset the graph,
+  and export results.
+- `Parameters`: scoring and algorithm configuration (alignment mode, seeding, consensus, RC handling,
+  verbosity, etc.), nearly all setters are chainable.
+- `SequenceBatch`: a view over input sequences plus optional read names and quality weights.
+- `OutputMode`: choose which outputs to compute (`consensus`, `msa`, or both).
+- `MsaResult` / `EncodedMsaResult`: alignment output. `msa` holds per-read aligned rows; `clusters`
+  holds one or more consensus sequences with coverage/read-id metadata.
+- `Graph`: read-only view of the internal POA graph for inspection or subgraph workflows.
+- `encode` helpers (`encode_dna`, `encode_aa`) and `Alphabet`: use these when working with encoded APIs
+  like `msa_encoded` or `align_sequence_raw`.
+
+See further down for examples using the API.
+
+## One-shot vs incremental APIs
+
+abPOA exposes two different execution paths, and the wrapper mirrors that split:
+
+- **One-shot MSA**: [`Aligner::msa`] and [`Aligner::msa_encoded`] call the upstream C driver
+  `abpoa_msa`. Each call resets the internal graph and rebuilds it from the provided batch.
+  This path is the only one that can use minimizer seeding, guide-tree ordering, and anchored
+  window alignment.
+- **Incremental / low-level**: APIs such as [`Aligner::msa_in_place`], [`Aligner::add_sequences`],
+  [`Aligner::align_sequence_raw`], and [`Aligner::add_alignment`] align reads directly to the
+  current graph in the order you provide them. They preserve graph state between calls and
+  are meant for streaming or custom graph edits.
+
+**WARNING:** Because the incremental APIs never go through `abpoa_msa`, they **do not** use minimizer seeding
+or guide-tree partitioning even if those parameters are set.
+
+## Seeding, guide trees, and `progressive_poa`
+
+These settings only affect the one-shot path (`msa` / `msa_encoded`) and only when
+`set_align_mode` is `Global`:
+
+- [`Parameters::set_minimizer_seeding(k, w, min_w)`] sets the minimizer parameters and implicitly
+  enables seeding (`disable_seeding = false`). This activates abPOA anchored-window alignment
+  based on minimizer chains.
+- [`Parameters::set_disable_seeding(true/false)`] gates the anchored-window mode. When `true`,
+  no minimizer anchors are used.
+- [`Parameters::set_progressive_poa(true)`] controls whether abPOA builds a minimizer-based guide
+  tree to reorder reads before alignment.
+
+The combinations behave as in upstream abPOA:
+
+- `set_disable_seeding(true)` + `set_progressive_poa(false)` (default): plain progressive POA in input
+  order.
+- `set_disable_seeding(true)` + `set_progressive_poa(true)`: **guide-tree ordering only**. abPOA still
+  collects minimizers to build the tree, but aligns full reads (no anchored windows).
+- `set_disable_seeding(false)` (via `set_minimizer_seeding(..)` or `set_disable_seeding(false)`):
+  anchored-window mode. If `set_progressive_poa(true)` is also set, reads are first reordered by
+  the guide tree; if not, they are aligned in input order.
+
+Note: minimizer seeding can behave poorly on very low‑complexity or highly repetitive reads.
+If you see truncated or odd consensus sequences in seeded mode, try disabling seeding or using
+larger `k/w` values.
+
+## Examples
+
+Look into the `abpoa/examples/` directory to see examples on how to use the API:
+
+- `example_c.rs`: end-to-end one-shot MSA with minimizer seeding, per-base quality weights, and FASTA/GFA outputs.
+- `oneshot_seeding.rs`: when seeding/guide trees do (and do not) apply, compares one-shot vs incremental paths.
+- `incremental_msa.rs`: streaming/incremental graph growth (`msa_in_place`, `add_sequences`, `finalize_msa`).
+- `manual_graph_build.rs`: low-level alignment loop (`reset`, `align_sequence_raw`, `add_alignment`) and custom scoring/consensus.
+- `subgraph_slice_alignment.rs` and `per_read_subalignments.rs`: aligning reads to selected subgraphs/windows.
+- `graph_io.rs`: exporting MSA/GFA, restoring graphs, read names, and reverse‑complement aware MSA (`set_ambiguous_strand`).
+
+The wrapper exposes a more than the examples show, feel free to explore.
