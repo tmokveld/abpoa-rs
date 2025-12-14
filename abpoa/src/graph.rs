@@ -15,6 +15,22 @@ pub struct NodeRef {
     pub n_span_read: i32,
 }
 
+/// Borrowed view of the metadata and connectivity of a single node
+///
+/// Unlike [`NodeRef`], this view borrows edge arrays from the underlying graph without
+/// allocating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeView<'a> {
+    pub id: NodeId,
+    pub base: u8,
+    pub in_ids: &'a [i32],
+    pub in_w: &'a [i32],
+    pub out_ids: &'a [i32],
+    pub out_w: &'a [i32],
+    pub n_read: i32,
+    pub n_span_read: i32,
+}
+
 /// Borrowed view into `abpoa_graph_t` tied to an `Aligner` borrow
 pub struct Graph<'a> {
     graph: NonNull<sys::abpoa_graph_t>,
@@ -41,7 +57,8 @@ impl<'a> Graph<'a> {
     /// Number of nodes present in the graph (+source/sink sentinels)
     pub fn node_count(&self) -> usize {
         // Safety: the graph pointer is valid for the lifetime of this view
-        unsafe { (*self.graph.as_ptr()).node_n as usize }
+        let n = unsafe { (*self.graph.as_ptr()).node_n };
+        n.max(0) as usize
     }
 
     /// Whether the graph has only sentinel nodes (+no aligned bases)
@@ -51,7 +68,9 @@ impl<'a> Graph<'a> {
 
     /// Number of sequences recorded in the graph
     pub fn sequence_count(&self) -> usize {
-        unsafe { (*self.seqs.as_ptr()).n_seq as usize }
+        // Safety: `n_seq` is owned by the aligner and valid for the lifetime of `self`
+        let n = unsafe { (*self.seqs.as_ptr()).n_seq };
+        n.max(0) as usize
     }
 
     /// Whether the graph has been finalized with a consensus sequence
@@ -68,10 +87,41 @@ impl<'a> Graph<'a> {
         }
     }
 
-    /// Borrow metadata for a node by its id.
+    /// Node id at a given topological index.
+    ///
+    /// Requires the graph to be topologically sorted (e.g. via
+    /// [`crate::Aligner::ensure_topological`]).
+    pub fn node_id_at_topological_index(&self, index: usize) -> Result<NodeId> {
+        let graph = unsafe { self.graph.as_ref() };
+        if index >= graph.node_n.max(0) as usize {
+            return Err(Error::InvalidInput(
+                "topological index out of bounds for current graph".into(),
+            ));
+        }
+        let ptr = graph.index_to_node_id;
+        if ptr.is_null() {
+            return Err(Error::NullPointer(
+                "index_to_node_id was null; call ensure_topological first",
+            ));
+        }
+        // Safety: `index_to_node_id` is allocated by abPOA and sized to `node_n` after
+        // topological sorting; `index` is validated against `node_n` above.
+        Ok(NodeId(unsafe { *ptr.add(index) }))
+    }
+
+    /// Snapshot metadata for a node by its id.
+    ///
+    /// This allocates edge vectors; for a borrowed, zero-allocation view use
+    /// [`Graph::node_view`].
     pub fn node(&self, id: NodeId) -> Result<NodeRef> {
         let node = self.node_by_id(id)?;
         Ok(self.build_node_ref(node))
+    }
+
+    /// Borrow metadata and edge arrays for a node by its id.
+    pub fn node_view(&self, id: NodeId) -> Result<NodeView<'_>> {
+        let node = self.node_by_id(id)?;
+        Ok(self.build_node_view(node))
     }
 
     /// Sum of outgoing edge weights for the given node
@@ -155,14 +205,29 @@ impl<'a> Graph<'a> {
         }
     }
 
+    fn build_node_view(&self, node: &sys::abpoa_node_t) -> NodeView<'_> {
+        let (in_ids, in_w) = self.edge_slices(node.in_id, node.in_edge_weight, node.in_edge_n);
+        let (out_ids, out_w) = self.edge_slices(node.out_id, node.out_edge_weight, node.out_edge_n);
+        NodeView {
+            id: NodeId(node.node_id),
+            base: node.base,
+            in_ids,
+            in_w,
+            out_ids,
+            out_w,
+            n_read: node.n_read.max(0),
+            n_span_read: node.n_span_read.max(0),
+        }
+    }
+
     fn validate_node_id(&self, id: NodeId) -> Result<usize> {
         if id.0 < 0 {
-            return Err(Error::InvalidInput("node id cannot be negative"));
+            return Err(Error::InvalidInput("node id cannot be negative".into()));
         }
         let count = self.node_count();
         if id.0 as usize >= count {
             return Err(Error::InvalidInput(
-                "node id out of bounds for current graph",
+                "node id out of bounds for current graph".into(),
             ));
         }
         Ok(id.0 as usize)
@@ -183,8 +248,14 @@ impl<'a> Graph<'a> {
         let index = self.validate_node_id(id)?;
         let ptr = mapping.ok_or(Error::NullPointer(null_msg))?;
         // Safety: mapping arrays are allocated by abPOA and sized to node count; index was
-        // validated against node_n above
-        Ok(unsafe { *ptr.add(index) as usize })
+        // validated against node_n above.
+        let value = unsafe { *ptr.add(index) };
+        if value < 0 {
+            return Err(Error::InvalidInput(
+                "mapping contained negative value".into(),
+            ));
+        }
+        Ok(value as usize)
     }
 
     fn edge_slice(&self, ptr: *mut i32, len: i32) -> &[i32] {
@@ -194,6 +265,13 @@ impl<'a> Graph<'a> {
             // Safety: abPOA allocates edge arrays to at least `len` when len > 0
             unsafe { slice::from_raw_parts(ptr, len as usize) }
         }
+    }
+
+    fn edge_slices(&self, ids: *mut i32, weights: *mut i32, count: i32) -> (&[i32], &[i32]) {
+        let ids = self.edge_slice(ids, count);
+        let weights = self.edge_slice(weights, count);
+        let len = ids.len().min(weights.len());
+        (&ids[..len], &weights[..len])
     }
 
     fn collect_edges(&self, ids: *mut i32, weights: *mut i32, count: i32) -> Vec<(NodeId, i32)> {
@@ -610,6 +688,50 @@ mod tests {
                 let by_id = graph.node(by_index.id).unwrap();
                 assert_eq!(by_id.id, by_index.id);
             }
+        });
+    }
+
+    #[test]
+    fn node_view_matches_node_snapshot() {
+        with_graph(&[b"ACGT", b"ACGA"], |graph, nodes| {
+            for node in nodes {
+                let view = graph.node_view(node.id).unwrap();
+                assert_eq!(view.id, node.id);
+                assert_eq!(view.base, node.base);
+                assert_eq!(view.n_read, node.n_read);
+                assert_eq!(view.n_span_read, node.n_span_read);
+                assert_eq!(view.in_ids.len(), view.in_w.len());
+                assert_eq!(view.out_ids.len(), view.out_w.len());
+
+                let view_in: Vec<_> = view
+                    .in_ids
+                    .iter()
+                    .copied()
+                    .zip(view.in_w.iter().copied())
+                    .collect();
+                let expected_in: Vec<_> = node.in_edges.iter().map(|(id, w)| (id.0, *w)).collect();
+                assert_eq!(view_in, expected_in);
+
+                let view_out: Vec<_> = view
+                    .out_ids
+                    .iter()
+                    .copied()
+                    .zip(view.out_w.iter().copied())
+                    .collect();
+                let expected_out: Vec<_> =
+                    node.out_edges.iter().map(|(id, w)| (id.0, *w)).collect();
+                assert_eq!(view_out, expected_out);
+            }
+
+            assert!(matches!(
+                graph.node_view(NodeId(-1)),
+                Err(Error::InvalidInput(msg)) if msg == "node id cannot be negative"
+            ));
+            let oob_id = NodeId(i32::try_from(graph.node_count()).unwrap());
+            assert!(matches!(
+                graph.node_view(oob_id),
+                Err(Error::InvalidInput(msg)) if msg == "node id out of bounds for current graph"
+            ));
         });
     }
 }

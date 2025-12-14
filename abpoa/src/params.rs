@@ -126,11 +126,9 @@ impl Parameters {
         if !self.dirty {
             return;
         }
-        // Safety: `raw` is a valid, initialized parameter pointer expected by abPOA.
+        // Safety: `raw` is a valid, initialized parameter pointer expected by abPOA
         unsafe {
             sys::abpoa_post_set_para(self.raw.as_ptr());
-            // Track read ids when requested so downstream consensus/MSA generation has the
-            // coverage metadata it needs.
             self.raw
                 .as_mut()
                 .set_use_read_ids(self.preserve_read_ids as u8);
@@ -160,12 +158,12 @@ impl Parameters {
 
     fn resize_matrix(&mut self, m: i32) -> Result<()> {
         if m <= 0 {
-            return Err(Error::InvalidInput("alphabet size must be positive"));
+            return Err(Error::InvalidInput("alphabet size must be positive".into()));
         }
         let new_size = (m as usize)
             .checked_mul(m as usize)
             .and_then(|v| v.checked_mul(mem::size_of::<i32>()))
-            .ok_or(Error::InvalidInput("score matrix size overflow"))?;
+            .ok_or(Error::InvalidInput("score matrix size overflow".into()))?;
 
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
@@ -200,6 +198,7 @@ impl Parameters {
         unsafe {
             self.raw.as_mut().set_use_qv(enabled as u8);
         }
+        self.mark_dirty();
         self
     }
 
@@ -221,7 +220,7 @@ impl Parameters {
     pub fn set_minimizer_seeding(&mut self, k: i32, w: i32, min_w: i32) -> Result<&mut Self> {
         if k <= 0 || w <= 0 || min_w < 0 {
             return Err(Error::InvalidInput(
-                "seeding parameters must be positive (min_w may be zero)",
+                "seeding parameters must be positive (min_w may be zero)".into(),
             ));
         }
 
@@ -279,6 +278,16 @@ impl Parameters {
     }
 
     /// Sort input reads by length before alignment
+    ///
+    /// Deprecated: upstream abPOA only applies this when reading sequences from a file
+    /// (`abpoa_msa1`), which this crate does not expose. It has no effect on
+    /// [`crate::Aligner::msa`], [`crate::Aligner::msa_in_place`], or [`crate::Aligner::add_sequences`]
+    ///
+    /// Sort your input sequences yourself before calling alignment methods
+    #[deprecated(
+        since = "0.1.0",
+        note = "No effect in the Rust APIs; upstream only applies this in its file-reading path (abpoa_msa1), which is not exposed. Sort inputs yourself."
+    )]
     pub fn set_sort_input_seq(&mut self, enabled: bool) -> &mut Self {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
@@ -420,7 +429,7 @@ impl Parameters {
     pub fn set_max_consensus(&mut self, max_n_cons: i32) -> Result<&mut Self> {
         if max_n_cons < 1 {
             return Err(Error::InvalidInput(
-                "max_n_cons must be positive to request consensus output",
+                "max_n_cons must be positive to request consensus output".into(),
             ));
         }
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
@@ -435,7 +444,7 @@ impl Parameters {
     pub fn set_min_cluster_freq(&mut self, min_freq: f64) -> Result<&mut Self> {
         if !(0.0..=1.0).contains(&min_freq) {
             return Err(Error::InvalidInput(
-                "min_freq must be between 0.0 and 1.0 (inclusive)",
+                "min_freq must be between 0.0 and 1.0 (inclusive)".into(),
             ));
         }
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
@@ -454,7 +463,7 @@ impl Parameters {
     ///   `set_sub_alignment(true)` to count spanning reads
     ///
     /// `max_n_cons` and `min_freq` control clustering when you want multiple consensus
-    /// sequences and apply to both algorithms.
+    /// sequences and apply to both algorithms
     pub fn set_consensus(
         &mut self,
         alg: ConsensusAlgorithm,
@@ -501,12 +510,12 @@ impl Parameters {
 
     /// Load a scoring matrix from a file and use it instead of match/mismatch scores
     pub fn set_score_matrix_file<P: AsRef<Path>>(&mut self, path: P) -> Result<&mut Self> {
-        let path = path
-            .as_ref()
-            .to_str()
-            .ok_or(Error::InvalidInput("score matrix path must be valid UTF-8"))?;
-        let c_path = CString::new(path)
-            .map_err(|_| Error::InvalidInput("score matrix path cannot contain null bytes"))?;
+        let path = path.as_ref().to_str().ok_or(Error::InvalidInput(
+            "score matrix path must be valid UTF-8".into(),
+        ))?;
+        let c_path = CString::new(path).map_err(|_| {
+            Error::InvalidInput("score matrix path cannot contain null bytes".into())
+        })?;
 
         // Safety: `raw` is uniquely owned; replace any previous path to avoid leaking C-allocated
         // storage
@@ -534,7 +543,7 @@ impl Parameters {
     pub fn set_custom_matrix(&mut self, m: i32, matrix: &[i32]) -> Result<&mut Self> {
         if m <= 0 {
             return Err(Error::InvalidInput(
-                "custom matrix dimension must be positive",
+                "custom matrix dimension must be positive".into(),
             ));
         }
         let matrix_alphabet = match m {
@@ -542,23 +551,24 @@ impl Parameters {
             27 => Alphabet::AminoAcid,
             _ => {
                 return Err(Error::InvalidInput(
-                    "custom matrix dimension must be 5 (DNA) or 27 (amino acids)",
+                    "custom matrix dimension must be 5 (DNA) or 27 (amino acids)".into(),
                 ));
             }
         };
         if matrix_alphabet != self.alphabet {
             return Err(Error::InvalidInput(
-                "custom matrix dimension must match configured alphabet; call set_alphabet first",
+                "custom matrix dimension must match configured alphabet; call set_alphabet first"
+                    .into(),
             ));
         }
         let expected = (m as usize)
             .checked_mul(m as usize)
             .ok_or(Error::InvalidInput(
-                "custom matrix dimensions overflow native size",
+                "custom matrix dimensions overflow native size".into(),
             ))?;
         if matrix.len() != expected {
             return Err(Error::InvalidInput(
-                "custom matrix length must be m*m entries",
+                "custom matrix length must be m*m entries".into(),
             ));
         }
 
@@ -586,10 +596,11 @@ impl Parameters {
     /// Provide a path to an existing graph for incremental alignment/restoration
     pub fn set_incremental_graph_file<P: AsRef<Path>>(&mut self, path: P) -> Result<&mut Self> {
         let path = path.as_ref().to_str().ok_or(Error::InvalidInput(
-            "incremental graph path must be valid UTF-8",
+            "incremental graph path must be valid UTF-8".into(),
         ))?;
-        let c_path = CString::new(path)
-            .map_err(|_| Error::InvalidInput("incremental graph path cannot contain null bytes"))?;
+        let c_path = CString::new(path).map_err(|_| {
+            Error::InvalidInput("incremental graph path cannot contain null bytes".into())
+        })?;
 
         // Safety: `raw` is uniquely owned; replace any previous path to avoid leaking C-allocated
         // storage
@@ -823,15 +834,17 @@ impl Scoring {
 
     fn validate(self) -> Result<()> {
         if self.match_score < 0 {
-            return Err(Error::InvalidInput("match score cannot be negative"));
+            return Err(Error::InvalidInput("match score cannot be negative".into()));
         }
         if self.mismatch < 0 {
-            return Err(Error::InvalidInput("mismatch score cannot be negative"));
+            return Err(Error::InvalidInput(
+                "mismatch score cannot be negative".into(),
+            ));
         }
         match self.gaps {
             GapPenalty::Linear { gap } => {
                 if gap <= 0 {
-                    return Err(Error::InvalidInput("linear gap must be positive"));
+                    return Err(Error::InvalidInput("linear gap must be positive".into()));
                 }
             }
             GapPenalty::Affine {
@@ -839,10 +852,14 @@ impl Scoring {
                 gap_extend,
             } => {
                 if gap_open <= 0 {
-                    return Err(Error::InvalidInput("affine gap open must be positive"));
+                    return Err(Error::InvalidInput(
+                        "affine gap open must be positive".into(),
+                    ));
                 }
                 if gap_extend <= 0 {
-                    return Err(Error::InvalidInput("affine gap extension must be positive"));
+                    return Err(Error::InvalidInput(
+                        "affine gap extension must be positive".into(),
+                    ));
                 }
             }
             GapPenalty::Convex {
@@ -852,11 +869,13 @@ impl Scoring {
                 second_gap_extend,
             } => {
                 if gap_open <= 0 || second_gap_open <= 0 {
-                    return Err(Error::InvalidInput("convex gap opens must be positive"));
+                    return Err(Error::InvalidInput(
+                        "convex gap opens must be positive".into(),
+                    ));
                 }
                 if gap_extend <= 0 || second_gap_extend <= 0 {
                     return Err(Error::InvalidInput(
-                        "convex gap extensions must be positive",
+                        "convex gap extensions must be positive".into(),
                     ));
                 }
             }
@@ -1002,6 +1021,7 @@ mod tests {
         params.set_use_quality(false);
         assert_eq!(unsafe { params.raw.as_ref() }.use_qv(), 0);
 
+        #[allow(deprecated)]
         params
             .set_progressive_poa(true)
             .set_inc_path_score(true)

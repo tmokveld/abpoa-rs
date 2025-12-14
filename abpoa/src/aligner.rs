@@ -10,6 +10,8 @@ use crate::graph::Graph;
 use crate::params::{NodeId, OutputMode, Parameters, SentinelNode};
 use crate::result::{EncodedMsaResult, MsaResult};
 use crate::{Error, Result, sys};
+
+pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
 use libc;
 use std::{
     env,
@@ -257,7 +259,7 @@ impl RawAlignment {
                     let node = graph.node(node_id)?;
                     let graph_base = decode_base(alphabet, node.base);
                     let query_base = *query.get(query_index).ok_or(Error::InvalidInput(
-                        "graph cigar referenced a query index past sequence length",
+                        "graph cigar referenced a query index past sequence length".into(),
                     ))?;
                     graph_row.push(graph_base);
                     query_row.push(decode_base(alphabet, query_base));
@@ -278,7 +280,7 @@ impl RawAlignment {
                     for offset in 0..len {
                         let idx = start + offset;
                         let query_base = *query.get(idx).ok_or(Error::InvalidInput(
-                            "graph cigar referenced a query index past sequence length",
+                            "graph cigar referenced a query index past sequence length".into(),
                         ))?;
                         graph_row.push('-');
                         markers.push(' ');
@@ -310,7 +312,7 @@ impl Drop for RawAlignment {
 /// update the underlying `Parameters` (for example `outputs` or quality-weighted
 /// consensus mode). These changes persist for subsequent operations on the same
 /// aligner. If you need a clean configuration, construct a new `Aligner` with
-/// fresh `Parameters`.
+/// fresh `Parameters`
 pub struct Aligner {
     raw: NonNull<sys::abpoa_t>,
     params: Parameters,
@@ -437,14 +439,14 @@ impl Aligner {
         check_existing: bool,
     ) -> Result<()> {
         if weight <= 0 {
-            return Err(Error::InvalidInput("edge weight must be positive"));
+            return Err(Error::InvalidInput("edge weight must be positive".into()));
         }
         let graph = self.graph_mut()?;
         Self::validate_node_id(graph, from)?;
         Self::validate_node_id(graph, to)?;
         if from == to {
             return Err(Error::InvalidInput(
-                "edge endpoints must differ to avoid self-cycles",
+                "edge endpoints must differ to avoid self-cycles".into(),
             ));
         }
 
@@ -516,7 +518,7 @@ impl Aligner {
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
         if raw_params.incr_fn.is_null() {
             return Err(Error::InvalidInput(
-                "set an incremental graph path before calling restore_graph",
+                "set an incremental graph path before calling restore_graph".into(),
             ));
         }
 
@@ -558,7 +560,7 @@ impl Aligner {
     /// Align a pre-encoded sequence to the current graph and return the raw alignment result
     pub fn align_sequence_raw(&mut self, encoded_seq: &[u8]) -> Result<RawAlignment> {
         if encoded_seq.is_empty() {
-            return Err(Error::InvalidInput("cannot align an empty sequence"));
+            return Err(Error::InvalidInput("cannot align an empty sequence".into()));
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
         let mut res = RawAlignment::new();
@@ -578,7 +580,10 @@ impl Aligner {
             if status == -1 && self.graph_is_empty() {
                 return Ok(res);
             }
-            return Err(Error::AbpoaError(status));
+            return Err(Error::Abpoa {
+                func: "abpoa_align_sequence_to_graph",
+                code: status,
+            });
         }
 
         Ok(res)
@@ -591,7 +596,7 @@ impl Aligner {
         encoded_seq: &[u8],
     ) -> Result<RawAlignment> {
         if encoded_seq.is_empty() {
-            return Err(Error::InvalidInput("cannot align an empty sequence"));
+            return Err(Error::InvalidInput("cannot align an empty sequence".into()));
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
         let mut res = RawAlignment::new();
@@ -612,7 +617,10 @@ impl Aligner {
             if status == -1 && self.graph_is_empty() {
                 return Ok(res);
             }
-            return Err(Error::AbpoaError(status));
+            return Err(Error::Abpoa {
+                func: "abpoa_align_sequence_to_subgraph",
+                code: status,
+            });
         }
 
         Ok(res)
@@ -627,18 +635,23 @@ impl Aligner {
         total_reads: i32,
     ) -> Result<()> {
         if encoded_seq.is_empty() {
-            return Err(Error::InvalidInput("cannot add an empty sequence"));
+            return Err(Error::InvalidInput("cannot add an empty sequence".into()));
         }
         if read_id < 0 || total_reads <= 0 {
             return Err(Error::InvalidInput(
-                "read_id and total_reads must be non-negative, total_reads > 0",
+                "read_id and total_reads must be non-negative, total_reads > 0".into(),
+            ));
+        }
+        if read_id >= total_reads {
+            return Err(Error::InvalidInput(
+                format!("read_id {read_id} out of range 0..{total_reads}").into(),
             ));
         }
         if let Some(w) = weights
             && w.len() != encoded_seq.len()
         {
             return Err(Error::InvalidInput(
-                "quality weights must match sequence length",
+                "quality weights must match sequence length".into(),
             ));
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
@@ -668,7 +681,10 @@ impl Aligner {
             )
         };
         if status != 0 {
-            return Err(Error::AbpoaError(status));
+            return Err(Error::Abpoa {
+                func: "abpoa_add_graph_alignment",
+                code: status,
+            });
         }
 
         Ok(())
@@ -729,7 +745,7 @@ impl Aligner {
         for (idx, seq) in encoded.iter().enumerate() {
             let read_id = read_id_offset
                 .checked_add(to_i32(idx, "too many sequences for abpoa")?)
-                .ok_or(Error::InvalidInput("too many sequences for abpoa"))?;
+                .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
 
             if let Some(is_rc_ptr) = is_rc_ptr {
                 // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
@@ -776,17 +792,17 @@ impl Aligner {
             }
 
             if is_rc {
-                seq_to_add = rc_seq_storage
-                    .as_ref()
-                    .ok_or(Error::InvalidInput("reverse complement sequence missing"))?;
+                seq_to_add = rc_seq_storage.as_ref().ok_or(Error::InvalidInput(
+                    "reverse complement sequence missing".into(),
+                ))?;
             }
 
             if let Some(weights) = prepared_weights {
                 let row = &weights.rows()[idx];
                 if is_rc {
-                    let rc_row = rc_weights
-                        .as_ref()
-                        .ok_or(Error::InvalidInput("reverse complement weights missing"))?;
+                    let rc_row = rc_weights.as_ref().ok_or(Error::InvalidInput(
+                        "reverse complement weights missing".into(),
+                    ))?;
                     self.add_alignment_with_quality(
                         seq_to_add,
                         rc_row,
@@ -830,11 +846,16 @@ impl Aligner {
         include_both_ends: bool,
     ) -> Result<()> {
         if encoded_seq.is_empty() {
-            return Err(Error::InvalidInput("cannot add an empty sequence"));
+            return Err(Error::InvalidInput("cannot add an empty sequence".into()));
         }
         if read_id < 0 || total_reads <= 0 {
             return Err(Error::InvalidInput(
-                "read_id and total_reads must be non-negative, total_reads > 0",
+                "read_id and total_reads must be non-negative, total_reads > 0".into(),
+            ));
+        }
+        if read_id >= total_reads {
+            return Err(Error::InvalidInput(
+                format!("read_id {read_id} out of range 0..{total_reads}").into(),
             ));
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
@@ -858,7 +879,10 @@ impl Aligner {
             )
         };
         if status != 0 {
-            return Err(Error::AbpoaError(status));
+            return Err(Error::Abpoa {
+                func: "abpoa_add_subgraph_alignment",
+                code: status,
+            });
         }
 
         Ok(())
@@ -915,7 +939,7 @@ impl Aligner {
         let added = to_i32(encoded.len(), "too many sequences for abpoa")?;
         let total_reads = current
             .checked_add(added)
-            .ok_or(Error::InvalidInput("too many sequences for abpoa"))?;
+            .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
 
         self.store_batch_in_abs(&batch, current, total_reads)?;
         let prepared_weights = prepare_quality_weights(batch.quality_weights(), &seq_lens)?;
@@ -949,7 +973,7 @@ impl Aligner {
 
         if outputs.is_empty() {
             return Err(Error::InvalidInput(
-                "enable consensus and/or msa output before finalizing",
+                "enable consensus and/or msa output before finalizing".into(),
             ));
         }
 
@@ -1170,8 +1194,22 @@ impl Aligner {
         read_result
     }
 
-    /// Dump a DOT/PNG graph visualization to the given path using abPOA's `dot` helper
+    /// Dump a PNG/PDF graph visualization using the Rust DOT emitter and GraphViz `dot`
+    ///
+    /// A DOT file is written next to `path` at `path + ".dot"` (mirroring upstream)
     pub fn write_pog_to_path<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        let options = PogDotOptions::default();
+        self.write_pog_to_path_with_options(path, &options)
+    }
+
+    /// Dump a DOT/PNG graph visualization to the given path using upstream abPOA's `abpoa_dump_pog`
+    ///
+    /// This invokes GraphViz by calling `system("dot ...")` inside abPOA
+    /// Prefer [`write_pog_to_path`] / [`write_pog_to_path_with_options`] to avoid shell invocation
+    #[deprecated(
+        note = "calls upstream abpoa_dump_pog which uses system() to invoke `dot`; prefer write_pog_to_path[_with_options]"
+    )]
+    pub fn write_pog_to_path_upstream<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
         }
@@ -1180,32 +1218,134 @@ impl Aligner {
             Some("png") | Some("pdf") => {}
             _ => {
                 return Err(Error::InvalidInput(
-                    "graph dump path must end with .png or .pdf",
+                    "graph dump path must end with .png or .pdf".into(),
                 ));
             }
         }
 
-        let path_str = path
-            .as_ref()
-            .to_str()
-            .ok_or(Error::InvalidInput("graph dump path must be valid UTF-8"))?;
+        let path_str = path.as_ref().to_str().ok_or(Error::InvalidInput(
+            "graph dump path must be valid UTF-8".into(),
+        ))?;
         let c_path = CString::new(path_str)
-            .map_err(|_| Error::InvalidInput("graph dump path cannot contain null bytes"))?;
+            .map_err(|_| Error::InvalidInput("graph dump path cannot contain null bytes".into()))?;
         let raw = unsafe { self.params.as_mut_ptr().as_mut() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
         let previous = raw.out_pog;
+        // Safety: `c_path` is a valid C string; `strdup` allocates an owned copy
         raw.out_pog = unsafe { libc::strdup(c_path.as_ptr()) };
         if raw.out_pog.is_null() {
             raw.out_pog = previous;
             return Err(Error::NullPointer("failed to store graph dump path"));
         }
 
+        // Safety: `self`/`self.params` are valid for the duration of the call
         unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), self.params.as_mut_ptr()) };
 
         unsafe {
             libc::free(raw.out_pog as *mut libc::c_void);
             raw.out_pog = previous;
         }
+        Ok(())
+    }
+
+    /// Write a GraphViz DOT view of the current partial order graph (POG)
+    ///
+    /// This mirrors the upstream `abpoa_dump_pog` DOT emission, but does not invoke `dot`
+    /// Use [`write_pog_to_path`] or [`write_pog_to_path_with_options`] to render to `png`/`pdf`
+    /// via GraphViz
+    pub fn write_pog_dot(
+        &mut self,
+        writer: &mut impl Write,
+        options: &PogDotOptions,
+    ) -> Result<()> {
+        if self.graph_is_empty() {
+            return Ok(());
+        }
+
+        self.ensure_topological()?;
+
+        let graph = self.graph()?;
+        crate::output::dot::write_pog_dot(&graph, self.alphabet(), writer, options)
+    }
+
+    /// Convenience helper that returns the DOT representation of the current POG
+    pub fn pog_dot(&mut self, options: &PogDotOptions) -> Result<String> {
+        let mut buf = Vec::new();
+        self.write_pog_dot(&mut buf, options)?;
+        Ok(String::from_utf8_lossy(&buf).into_owned())
+    }
+
+    /// Write a DOT file to `path` for the current POG
+    pub fn write_pog_dot_to_path<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        options: &PogDotOptions,
+    ) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path.as_ref())?;
+        self.write_pog_dot(&mut file, options)
+    }
+
+    /// Dump a PNG/PDF graph visualization using the Rust DOT emitter and `dot`
+    ///
+    /// A DOT file is written next to `path` at `path + ".dot"` (mirroring upstream)
+    pub fn write_pog_to_path_with_options<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        options: &PogDotOptions,
+    ) -> Result<()> {
+        if self.graph_is_empty() {
+            return Ok(());
+        }
+
+        let ext = path
+            .as_ref()
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or(Error::InvalidInput(
+                "graph dump path must end with .png or .pdf".into(),
+            ))?;
+        if ext != "png" && ext != "pdf" {
+            return Err(Error::InvalidInput(
+                "graph dump path must end with .png or .pdf".into(),
+            ));
+        }
+
+        let mut dot_path = std::ffi::OsString::from(path.as_ref().as_os_str());
+        dot_path.push(".dot");
+        let dot_path = PathBuf::from(dot_path);
+
+        self.write_pog_dot_to_path(&dot_path, options)?;
+
+        let status = process::Command::new("dot")
+            .arg(format!("-T{ext}"))
+            .arg("-o")
+            .arg(path.as_ref())
+            .arg(&dot_path)
+            .status();
+
+        let status = match status {
+            Ok(status) => status,
+            Err(err) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("failed to execute `dot`: {err}"),
+                )
+                .into());
+            }
+        };
+
+        if !status.success() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("`dot` exited with status {status}"),
+            )
+            .into());
+        }
+
         Ok(())
     }
 
@@ -1242,11 +1382,11 @@ impl Aligner {
             return Ok(convert(ptr::null(), alphabet));
         }
         if seqs.iter().any(|seq| seq.is_empty()) {
-            return Err(Error::InvalidInput("cannot align an empty sequence"));
+            return Err(Error::InvalidInput("cannot align an empty sequence".into()));
         }
         if outputs.is_empty() {
             return Err(Error::InvalidInput(
-                "enable consensus and/or msa output to collect results",
+                "enable consensus and/or msa output to collect results".into(),
             ));
         }
 
@@ -1301,7 +1441,10 @@ impl Aligner {
             )
         };
         if status != 0 {
-            return Err(Error::AbpoaError(status));
+            return Err(Error::Abpoa {
+                func: "abpoa_msa",
+                code: status,
+            });
         }
 
         // Store the original sequences and optional names on the aligner for downstream graph
@@ -1363,7 +1506,7 @@ impl Aligner {
             && names.len() != seqs.len()
         {
             return Err(Error::InvalidInput(
-                "names length must match sequence count",
+                "names length must match sequence count".into(),
             ));
         }
 
@@ -1384,9 +1527,9 @@ impl Aligner {
         for (idx, seq) in seqs.iter().enumerate() {
             let read_id = read_id_offset
                 .checked_add(to_i32(idx, "too many sequences for abpoa")?)
-                .ok_or(Error::InvalidInput("too many sequences for abpoa"))?;
+                .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
             let read_idx = usize::try_from(read_id)
-                .map_err(|_| Error::InvalidInput("read id cannot be negative"))?;
+                .map_err(|_| Error::InvalidInput("read id cannot be negative".into()))?;
 
             let seq_len = to_i32(seq.len(), "sequence length exceeds i32")?;
             // Safety: `abs.seq` points to an array sized to at least `n_seq` entries above
@@ -1422,11 +1565,11 @@ impl Aligner {
 
     fn validate_node_id(graph: &sys::abpoa_graph_t, id: NodeId) -> Result<()> {
         if id.0 < 0 {
-            return Err(Error::InvalidInput("node id cannot be negative"));
+            return Err(Error::InvalidInput("node id cannot be negative".into()));
         }
         if id.0 >= graph.node_n {
             return Err(Error::InvalidInput(
-                "node id out of bounds for current graph",
+                "node id out of bounds for current graph".into(),
             ));
         }
         Ok(())
@@ -1440,7 +1583,7 @@ impl Aligner {
         }
         if graph.index_rank_m < graph.node_n {
             return Err(Error::InvalidInput(
-                "graph indices too small; call ensure_topological to rebuild them",
+                "graph indices too small; call ensure_topological to rebuild them".into(),
             ));
         }
         Ok(())
@@ -1547,7 +1690,7 @@ fn prepare_quality_weights(
     };
     if weights.len() != lengths.len() {
         return Err(Error::InvalidInput(
-            "quality weights length must match sequence count",
+            "quality weights length must match sequence count".into(),
         ));
     }
 
@@ -1556,7 +1699,7 @@ fn prepare_quality_weights(
         let expected = len.max(0) as usize;
         if row.len() != expected {
             return Err(Error::InvalidInput(
-                "quality weights must match each sequence length",
+                "quality weights must match each sequence length".into(),
             ));
         }
         storage.push(row.to_vec());
@@ -1593,7 +1736,7 @@ fn decode_base(alphabet: Alphabet, code: u8) -> char {
 }
 
 fn to_i32(value: usize, context: &'static str) -> Result<i32> {
-    i32::try_from(value).map_err(|_| Error::InvalidInput(context))
+    i32::try_from(value).map_err(|_| Error::InvalidInput(context.into()))
 }
 
 fn sequence_name(abs: &sys::abpoa_seq_t, idx: usize) -> Result<String> {

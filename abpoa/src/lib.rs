@@ -22,6 +22,8 @@ pub mod encode;
 #[cfg(unix)]
 pub mod graph;
 #[cfg(unix)]
+pub mod output;
+#[cfg(unix)]
 pub mod params;
 #[cfg(unix)]
 pub mod result;
@@ -33,7 +35,9 @@ pub use crate::aligner::{
 #[cfg(unix)]
 pub use crate::encode::Alphabet;
 #[cfg(unix)]
-pub use crate::graph::{Graph, NodeRef, Sequence, SequenceIter, SequenceStr, Sequences};
+pub use crate::graph::{Graph, NodeRef, NodeView, Sequence, SequenceIter, SequenceStr, Sequences};
+#[cfg(unix)]
+pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
 #[cfg(unix)]
 pub use crate::params::{
     AlignMode, ConsensusAlgorithm, GapMode, GapPenalty, NodeId, OutputMode, Parameters, Scoring,
@@ -45,14 +49,17 @@ pub use crate::result::{Alignment, Cluster, EncodedCluster, EncodedMsaResult, Ms
 #[cfg(unix)]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("abPOA call failed with code {0}")]
-    AbpoaError(i32),
+    #[error("abPOA call {func} failed with code {code}")]
+    Abpoa { func: &'static str, code: i32 },
+
     #[error("invalid input: {0}")]
-    InvalidInput(&'static str),
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("{0}")]
+    InvalidInput(std::borrow::Cow<'static, str>),
+
+    #[error("null pointer: {0}")]
     NullPointer(&'static str),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 #[cfg(unix)]
