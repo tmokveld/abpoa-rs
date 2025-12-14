@@ -7,6 +7,7 @@ name = "abpoa"
 version = "0.1.0"
 dependencies = [
  "abpoa-sys",
+ "bitflags",
  "criterion",
  "libc",
  "rand",

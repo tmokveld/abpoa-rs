@@ -980,7 +980,7 @@ impl Aligner {
         let alphabet = self.alphabet();
         self.params.set_outputs(outputs);
 
-        if outputs.msa {
+        if outputs.contains(OutputMode::MSA) {
             // Safety: aligner and parameters are live; abPOA will populate `abc` with MSA/consensus
             unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), self.params.as_mut_ptr()) };
         } else {
@@ -1006,7 +1006,7 @@ impl Aligner {
 
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
-        self.params.set_outputs(OutputMode::consensus_only());
+        self.params.set_outputs(OutputMode::CONSENSUS);
 
         unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
         let abc = unsafe { (*self.as_ptr()).abc };
@@ -1050,7 +1050,8 @@ impl Aligner {
         }
 
         self.reset_cached_outputs()?;
-        self.params.set_outputs(OutputMode::consensus_and_msa());
+        self.params
+            .set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
         let alphabet = self.alphabet();
         let decode_row: fn(&[u8]) -> String = match alphabet {
             Alphabet::Dna => decode_dna,
@@ -1126,9 +1127,9 @@ impl Aligner {
         let has_consensus = has_consensus_sequence(abs_ptr)?;
         let desired_outputs = if has_consensus {
             // Avoid regenerating consensus if the graph already carries one from a restore
-            OutputMode::msa_only()
+            OutputMode::MSA
         } else {
-            OutputMode::consensus_and_msa()
+            OutputMode::CONSENSUS | OutputMode::MSA
         };
         self.params.set_outputs(desired_outputs);
 
@@ -1844,7 +1845,7 @@ mod tests {
         let mut aligner = Aligner::new().unwrap();
         {
             let params = aligner.params_mut();
-            params.set_outputs(OutputMode::consensus_and_msa());
+            params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
             params.set_alphabet(Alphabet::Dna).unwrap();
         }
 
@@ -1877,7 +1878,7 @@ mod tests {
         let decoded = aligner
             .msa(
                 SequenceBatch::from_sequences(&sequences),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -1889,7 +1890,7 @@ mod tests {
         let encoded = aligner
             .msa_encoded(
                 SequenceBatch::from_sequences(&sequences),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -1910,7 +1911,7 @@ mod tests {
         let gap_result = aligner
             .msa(
                 SequenceBatch::from_sequences(&sequences_with_gap),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -1936,7 +1937,7 @@ mod tests {
         let qual_result = aligner
             .msa(
                 SequenceBatch::from_sequences(&sequences_quality).with_quality_weights(&qualities),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -1975,7 +1976,7 @@ mod tests {
         aligner
             .msa(
                 SequenceBatch::from_sequences(&sequences).with_names(&names),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -2019,7 +2020,7 @@ mod tests {
         let mut aligner = Aligner::new().unwrap();
         {
             let params = aligner.params_mut();
-            params.set_outputs(OutputMode::consensus_and_msa());
+            params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
             params.set_alphabet(Alphabet::Dna).unwrap();
         }
 
@@ -2046,7 +2047,7 @@ mod tests {
         let expected = expected_aligner
             .msa(
                 SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -2065,14 +2066,14 @@ mod tests {
             .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
             .unwrap();
         let incremental = aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
 
         let mut expected_aligner = Aligner::new().unwrap();
         let expected = expected_aligner
             .msa(
                 SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -2092,12 +2093,12 @@ mod tests {
             .unwrap();
 
         let first = aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
         assert!(!first.clusters.is_empty(), "initial consensus should exist");
 
         let second = aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
         assert_eq!(second.clusters.len(), first.clusters.len());
         assert_eq!(second.clusters[0].consensus, first.clusters[0].consensus);
@@ -2115,14 +2116,14 @@ mod tests {
             .unwrap();
 
         let incremental = aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
 
         let mut expected_aligner = Aligner::new().unwrap();
         let expected = expected_aligner
             .msa(
                 SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -2138,7 +2139,7 @@ mod tests {
         let mut aligner = Aligner::new().unwrap();
         {
             let params = aligner.params_mut();
-            params.set_outputs(OutputMode::consensus_and_msa());
+            params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
             params.set_alphabet(Alphabet::Dna).unwrap();
         }
 
@@ -2181,14 +2182,14 @@ mod tests {
             .unwrap();
 
         let incremental = aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
 
         let mut expected_aligner = Aligner::new().unwrap();
         let expected = expected_aligner
             .msa(
                 SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 
@@ -2209,7 +2210,7 @@ mod tests {
             let mut aligner = Aligner::new().unwrap();
             {
                 let params = aligner.params_mut();
-                params.set_outputs(OutputMode::consensus_and_msa());
+                params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
                 params.set_alphabet(Alphabet::Dna).unwrap();
             }
 
@@ -2269,7 +2270,7 @@ mod tests {
         let decoded = aligner
             .msa(
                 SequenceBatch::from_sequences(&sequences),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
         assert_eq!(decoded.msa.len(), sequences.len());
@@ -2285,7 +2286,7 @@ mod tests {
         let encoded = aligner
             .msa_encoded(
                 SequenceBatch::from_sequences(&sequences),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 

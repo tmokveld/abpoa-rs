@@ -554,7 +554,7 @@ mod tests {
             .msa_in_place(SequenceBatch::from_sequences(seqs))
             .unwrap();
         aligner
-            .finalize_msa(OutputMode::consensus_and_msa())
+            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
             .unwrap();
         let graph = aligner.graph().unwrap();
         let nodes: Vec<_> = graph.nodes().collect();
@@ -653,7 +653,7 @@ mod tests {
         aligner
             .msa(
                 SequenceBatch::from_sequences(&seqs).with_names(&names),
-                OutputMode::consensus_and_msa(),
+                OutputMode::CONSENSUS | OutputMode::MSA,
             )
             .unwrap();
 

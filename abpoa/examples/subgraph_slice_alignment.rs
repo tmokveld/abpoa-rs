@@ -54,7 +54,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let result = aligner.finalize_msa(OutputMode::consensus_and_msa())?;
+    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
     println!("Consensus sequences:");
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("  [{}] {}", idx, cluster.consensus);

@@ -36,7 +36,7 @@ fn main() -> abpoa::Result<()> {
 
     let msa = aligner.msa(
         SequenceBatch::from_sequences(&seqs).with_names(&name_refs),
-        OutputMode::consensus_and_msa(),
+        OutputMode::CONSENSUS | OutputMode::MSA,
     )?;
     println!(
         "Consensus sequences: {:?}",
@@ -79,7 +79,7 @@ fn main() -> abpoa::Result<()> {
     let mut reloaded_aligner = Aligner::with_params(params)?;
     reloaded_aligner.restore_graph()?;
 
-    let result = reloaded_aligner.finalize_msa(OutputMode::consensus_only())?;
+    let result = reloaded_aligner.finalize_msa(OutputMode::CONSENSUS)?;
     for (i, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {i}: {}", cluster.consensus);
     }

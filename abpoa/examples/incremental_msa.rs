@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 
     // Align the first few sequences
     aligner.msa_in_place(SequenceBatch::from_sequences(&seqs[..first_part]))?;
-    let initial = aligner.finalize_msa(OutputMode::consensus_and_msa())?;
+    let initial = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
     println!("Initial MSA (first {first_part} sequences):");
     println!("\nMSA rows:");
     for row in &initial.msa {
@@ -64,7 +64,7 @@ fn main() -> Result<()> {
         ))?;
     }
 
-    let result = aligner.finalize_msa(OutputMode::consensus_and_msa())?;
+    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
     let graph = aligner.graph()?;
     println!(
         "> Final MSA after all sequences ({} total, {} nodes):",

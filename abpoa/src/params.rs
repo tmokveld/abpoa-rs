@@ -29,50 +29,18 @@ struct CustomMatrix {
     values: Vec<i32>,
 }
 
-/// Outputs to request when generating MSA/consensus results
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OutputMode {
-    pub consensus: bool,
-    pub msa: bool,
-}
-
-impl OutputMode {
-    pub const fn consensus_and_msa() -> Self {
-        Self {
-            consensus: true,
-            msa: true,
-        }
-    }
-
-    pub const fn consensus_only() -> Self {
-        Self {
-            consensus: true,
-            msa: false,
-        }
-    }
-
-    pub const fn msa_only() -> Self {
-        Self {
-            consensus: false,
-            msa: true,
-        }
-    }
-
-    pub const fn none() -> Self {
-        Self {
-            consensus: false,
-            msa: false,
-        }
-    }
-
-    pub const fn is_empty(self) -> bool {
-        !self.consensus && !self.msa
+bitflags::bitflags! {
+    /// Outputs to request when generating MSA/consensus results
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct OutputMode: u32 {
+        const CONSENSUS = 1 << 0;
+        const MSA       = 1 << 1;
     }
 }
 
 impl Default for OutputMode {
     fn default() -> Self {
-        Self::consensus_and_msa()
+        Self::CONSENSUS | Self::MSA
     }
 }
 
@@ -108,7 +76,7 @@ impl Parameters {
             _not_send_sync: PhantomData,
         };
         params.set_alphabet(Alphabet::Dna)?;
-        params.set_outputs(OutputMode::consensus_and_msa());
+        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
         params.set_use_read_ids(true);
         Ok(params)
     }
@@ -409,8 +377,8 @@ impl Parameters {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
             let raw = self.raw.as_mut();
-            raw.set_out_cons(outputs.consensus as u8);
-            raw.set_out_msa(outputs.msa as u8);
+            raw.set_out_cons(outputs.contains(OutputMode::CONSENSUS) as u8);
+            raw.set_out_msa(outputs.contains(OutputMode::MSA) as u8);
         }
         self.mark_dirty();
         previous
@@ -419,10 +387,10 @@ impl Parameters {
     pub fn outputs(&self) -> OutputMode {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         let raw = unsafe { self.raw.as_ref() };
-        OutputMode {
-            consensus: raw.out_cons() != 0,
-            msa: raw.out_msa() != 0,
-        }
+        let mut output = OutputMode::empty();
+        output.set(OutputMode::CONSENSUS, raw.out_cons() != 0);
+        output.set(OutputMode::MSA, raw.out_msa() != 0);
+        output
     }
 
     /// Set the maximum number of consensus sequences to emit
@@ -1126,14 +1094,14 @@ mod tests {
     #[test]
     fn outputs_and_finalize_flags() {
         let mut params = Parameters::new().unwrap();
-        assert_eq!(params.outputs(), OutputMode::consensus_and_msa());
+        assert_eq!(params.outputs(), OutputMode::CONSENSUS | OutputMode::MSA);
 
-        let previous = params.set_outputs(OutputMode::msa_only());
-        assert_eq!(previous, OutputMode::consensus_and_msa());
+        let previous = params.set_outputs(OutputMode::MSA);
+        assert_eq!(previous, OutputMode::CONSENSUS | OutputMode::MSA);
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.out_cons(), 0);
         assert_eq!(raw.out_msa(), 1);
-        assert_eq!(params.outputs(), OutputMode::msa_only());
+        assert_eq!(params.outputs(), OutputMode::MSA);
 
         params
             .set_align_mode(AlignMode::Local)
@@ -1151,11 +1119,11 @@ mod tests {
         assert_eq!(raw.use_read_ids(), 1);
         assert_eq!(raw.wb, -1, "local mode disables banding");
 
-        params.set_outputs(OutputMode::consensus_and_msa());
+        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.out_cons(), 1);
         assert_eq!(raw.out_msa(), 1);
-        assert_eq!(params.outputs(), OutputMode::consensus_and_msa());
+        assert_eq!(params.outputs(), OutputMode::CONSENSUS | OutputMode::MSA);
     }
 
     #[test]

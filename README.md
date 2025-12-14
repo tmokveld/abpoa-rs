@@ -16,7 +16,7 @@ fn main() -> abpoa::Result<()> {
     let sequences = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
     let result = aligner.msa(
         SequenceBatch::from_sequences(&sequences),
-        OutputMode::consensus_and_msa(),
+        OutputMode::CONSENSUS | OutputMode::MSA,
     )?;
     println!("Consensus: {}", result.clusters[0].consensus);
     Ok(())
@@ -41,7 +41,7 @@ params
     .set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.0)?;
 
 let mut aligner = Aligner::with_params(params)?;
-let result = aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::consensus_only())?;
+let result = aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::CONSENSUS)?;
 ```
 
 ## Rust wrapper API
@@ -53,7 +53,7 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
 - `Parameters`: scoring and algorithm configuration (alignment mode, seeding, consensus, RC handling,
   verbosity, etc.), nearly all setters are chainable.
 - `SequenceBatch`: a view over input sequences plus optional read names and quality weights.
-- `OutputMode`: choose which outputs to compute (`consensus`, `msa`, or both).
+- `OutputMode`: choose which outputs to compute (`OutputMode::CONSENSUS`, `OutputMode::MSA`, or both).
 - `MsaResult` / `EncodedMsaResult`: alignment output. `msa` holds per-read aligned rows; `clusters`
   holds one or more consensus sequences with coverage/read-id metadata.
 - `Graph`: read-only view of the internal POA graph for inspection or subgraph workflows.

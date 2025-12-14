@@ -21,7 +21,7 @@ fn bench_example_dataset(c: &mut Criterion) {
                 aligner
                     .msa(
                         SequenceBatch::from_sequences(&seqs),
-                        OutputMode::consensus_and_msa(),
+                        OutputMode::CONSENSUS | OutputMode::MSA,
                     )
                     .unwrap();
             },

@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     let mut aligner = Aligner::with_params(params)?;
     let result = aligner.msa(
         SequenceBatch::from_sequences(&sequences),
-        OutputMode::consensus_and_msa(),
+        OutputMode::CONSENSUS | OutputMode::MSA,
     )?;
 
     assert_eq!(result.msa.len(), truth.len());
@@ -67,7 +67,7 @@ fn main() -> Result<()> {
         }
         manual.add_alignment(seq, &aln, idx as i32, total_reads)?; // Add the alignment to the graph
     }
-    let manual_result = manual.finalize_msa(OutputMode::consensus_and_msa())?; // Finalize the MSA
+    let manual_result = manual.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?; // Finalize the MSA
 
     assert_eq!(manual_result.msa.len(), truth.len());
     for (row, expected) in manual_result.msa.iter().zip(truth.iter()) {

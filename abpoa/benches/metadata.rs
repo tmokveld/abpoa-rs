@@ -22,7 +22,7 @@ fn bench_metadata_overhead(c: &mut Criterion) {
                 aligner
                     .msa(
                         SequenceBatch::from_sequences(&seq_refs),
-                        OutputMode::consensus_and_msa(),
+                        OutputMode::CONSENSUS | OutputMode::MSA,
                     )
                     .unwrap();
             },
@@ -40,7 +40,7 @@ fn bench_metadata_overhead(c: &mut Criterion) {
                 aligner
                     .msa(
                         SequenceBatch::from_sequences(&seq_refs).with_names(&name_refs),
-                        OutputMode::consensus_and_msa(),
+                        OutputMode::CONSENSUS | OutputMode::MSA,
                     )
                     .unwrap();
             },
@@ -62,7 +62,7 @@ fn bench_metadata_overhead(c: &mut Criterion) {
                     .add_sequences(SequenceBatch::from_sequences(second).with_names(second_names))
                     .unwrap();
                 aligner
-                    .finalize_msa(OutputMode::consensus_and_msa())
+                    .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
                     .unwrap();
             },
             BatchSize::SmallInput,

@@ -77,7 +77,7 @@ fn main() -> Result<()> {
         aligner.add_subgraph_alignment(range, seq, &res, idx as i32, total_reads, false)?;
     }
 
-    let result = aligner.finalize_msa(OutputMode::consensus_and_msa())?;
+    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
 
     println!("\nMSA rows:");
     for row in result.msa {

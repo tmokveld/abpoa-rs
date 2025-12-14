@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let mut aligner = Aligner::with_params(params)?;
     let result = aligner.msa(
         SequenceBatch::from_sequences(&seqs).with_quality_weights(&weight_refs),
-        OutputMode::consensus_and_msa(),
+        OutputMode::CONSENSUS | OutputMode::MSA,
     )?;
 
     println!("=== msa using manual print ===");
