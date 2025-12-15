@@ -416,6 +416,50 @@ impl Parameters {
         self
     }
 
+    /// Configure the Z-drop score in extension alignment.
+    ///
+    /// `None` disables Z-drop (maps to `-1`, the upstream default).
+    pub fn set_zdrop(&mut self, zdrop: Option<i32>) -> Result<&mut Self> {
+        let zdrop = match zdrop {
+            None => -1,
+            Some(value) if value > 0 => value,
+            Some(_) => {
+                return Err(Error::InvalidInput(
+                    "zdrop must be positive when set".into(),
+                ));
+            }
+        };
+
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        unsafe {
+            self.raw.as_mut().zdrop = zdrop;
+        }
+        self.mark_dirty();
+        Ok(self)
+    }
+
+    /// Configure the end bonus in extension alignment.
+    ///
+    /// `None` disables the end bonus (maps to `-1`, the upstream default).
+    pub fn set_end_bonus(&mut self, end_bonus: Option<i32>) -> Result<&mut Self> {
+        let end_bonus = match end_bonus {
+            None => -1,
+            Some(value) if value > 0 => value,
+            Some(_) => {
+                return Err(Error::InvalidInput(
+                    "end_bonus must be positive when set".into(),
+                ));
+            }
+        };
+
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        unsafe {
+            self.raw.as_mut().end_bonus = end_bonus;
+        }
+        self.mark_dirty();
+        Ok(self)
+    }
+
     /// Configure which outputs abPOA should generate when asked to finalize
     pub fn set_outputs(&mut self, outputs: OutputMode) -> OutputMode {
         let previous = self.outputs();
@@ -1070,6 +1114,37 @@ mod tests {
         params.set_disable_seeding(true);
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.disable_seeding(), 1);
+    }
+
+    #[test]
+    fn zdrop_and_end_bonus_are_configurable() {
+        let mut params = Parameters::new().unwrap();
+        assert!(!params.dirty);
+
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.zdrop, -1);
+        assert_eq!(raw.end_bonus, -1);
+
+        params.set_zdrop(Some(10)).unwrap();
+        params.set_end_bonus(Some(5)).unwrap();
+        assert!(params.dirty);
+        let _ = params.as_mut_ptr();
+        assert!(!params.dirty);
+
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.zdrop, 10);
+        assert_eq!(raw.end_bonus, 5);
+
+        params.set_zdrop(None).unwrap();
+        params.set_end_bonus(None).unwrap();
+        let _ = params.as_mut_ptr();
+
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.zdrop, -1);
+        assert_eq!(raw.end_bonus, -1);
+
+        assert!(params.set_zdrop(Some(0)).is_err());
+        assert!(params.set_end_bonus(Some(0)).is_err());
     }
 
     #[test]
