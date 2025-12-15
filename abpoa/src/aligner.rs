@@ -720,7 +720,7 @@ impl Aligner {
     fn align_and_add_batch(
         &mut self,
         encoded: &[Vec<u8>],
-        prepared_weights: Option<&PreparedWeights>,
+        quality_weights: Option<&[&[i32]]>,
         read_id_offset: i32,
         total_reads: i32,
     ) -> Result<()> {
@@ -787,8 +787,8 @@ impl Aligner {
                         alignment = rc_alignment;
                         rc_seq_storage = Some(rc_seq);
                         is_rc = true;
-                        if let Some(weights) = prepared_weights {
-                            let row = &weights.rows()[idx];
+                        if let Some(weights) = quality_weights {
+                            let row = weights[idx];
                             rc_weights = Some(row.iter().rev().copied().collect());
                         }
                     }
@@ -801,8 +801,8 @@ impl Aligner {
                 ))?;
             }
 
-            if let Some(weights) = prepared_weights {
-                let row = &weights.rows()[idx];
+            if let Some(weights) = quality_weights {
+                let row = weights[idx];
                 if is_rc {
                     let rc_row = rc_weights.as_ref().ok_or(Error::InvalidInput(
                         "reverse complement weights missing".into(),
@@ -917,8 +917,8 @@ impl Aligner {
 
         let total_reads = to_i32(encoded.len(), "too many sequences for abpoa")?;
         self.store_batch_in_abs(&batch, 0, total_reads)?;
-        let prepared_weights = prepare_quality_weights(batch.quality_weights(), &seq_lens)?;
-        self.align_and_add_batch(&encoded, prepared_weights.as_ref(), 0, total_reads)?;
+        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
+        self.align_and_add_batch(&encoded, quality_weights, 0, total_reads)?;
 
         Ok(())
     }
@@ -946,8 +946,8 @@ impl Aligner {
             .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
 
         self.store_batch_in_abs(&batch, current, total_reads)?;
-        let prepared_weights = prepare_quality_weights(batch.quality_weights(), &seq_lens)?;
-        self.align_and_add_batch(&encoded, prepared_weights.as_ref(), current, total_reads)?;
+        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
+        self.align_and_add_batch(&encoded, quality_weights, current, total_reads)?;
 
         Ok(())
     }
@@ -1065,7 +1065,6 @@ impl Aligner {
             Alphabet::AminoAcid => decode_aa,
         };
 
-        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
         unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), self.params.as_mut_ptr()) };
         let abc_ptr = unsafe { (*self.as_ptr()).abc };
         let abc = unsafe { abc_ptr.as_ref() }.ok_or(Error::NullPointer(
@@ -1393,15 +1392,9 @@ impl Aligner {
         let mut seq_ptrs: Vec<*mut u8> =
             encoded.iter().map(|seq| seq.as_ptr() as *mut u8).collect();
 
-        let prepared_weights = prepare_quality_weights(batch.quality_weights(), &seq_lens)?;
-        let mut qual_ptrs: Vec<*mut i32> = prepared_weights
-            .as_ref()
-            .map(|w| {
-                w.rows()
-                    .iter()
-                    .map(|row| row.as_ptr() as *mut i32)
-                    .collect()
-            })
+        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
+        let mut qual_ptrs: Vec<*mut i32> = quality_weights
+            .map(|w| w.iter().map(|row| row.as_ptr() as *mut i32).collect())
             .unwrap_or_default();
         let qual_ptr = if qual_ptrs.is_empty() {
             ptr::null_mut()
@@ -1409,21 +1402,34 @@ impl Aligner {
             qual_ptrs.as_mut_ptr()
         };
 
-        let tmp_fp = TempCFile::new()?;
+        let params_ptr = self.params.as_mut_ptr();
+        let previous_out_gfa = unsafe { params_ptr.as_ref() }
+            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?
+            .out_gfa();
+        // abpoa_msa routes all output through abpoa_output; if out_gfa is enabled it will skip
+        // generating MSA/consensus unless it is cleared for the call.
+        // Safety: `params_ptr` is uniquely owned and points to a live `abpoa_para_t`.
+        unsafe {
+            (*params_ptr).set_out_gfa(0);
+        }
         // Safety: all pointers passed are valid for the duration of the call and match the
         // configured alphabet, abPOA will not keep them after returning
         let status = unsafe {
             sys::abpoa_msa(
                 self.as_mut_ptr(),
-                self.params.as_mut_ptr(),
+                params_ptr,
                 n_seq,
                 ptr::null_mut(),
                 seq_lens.as_mut_ptr(),
                 seq_ptrs.as_mut_ptr(),
                 qual_ptr,
-                tmp_fp.as_ptr() as *mut sys::FILE,
+                ptr::null_mut(),
             )
         };
+        // Safety: restore the caller-supplied value after the one-shot call completes.
+        unsafe {
+            (*params_ptr).set_out_gfa(previous_out_gfa);
+        }
         if status != 0 {
             return Err(Error::Abpoa {
                 func: "abpoa_msa",
@@ -1617,47 +1623,6 @@ impl Drop for Aligner {
     }
 }
 
-struct TempCFile {
-    fp: *mut libc::FILE,
-}
-
-impl TempCFile {
-    fn new() -> Result<Self> {
-        // Safety: `tmpfile` returns an owned FILE* or null on error
-        let fp = unsafe { libc::tmpfile() };
-        if fp.is_null() {
-            return Err(Error::NullPointer(
-                "failed to open temporary FILE for abPOA output",
-            ));
-        }
-        Ok(Self { fp })
-    }
-
-    fn as_ptr(&self) -> *mut libc::FILE {
-        self.fp
-    }
-}
-
-impl Drop for TempCFile {
-    fn drop(&mut self) {
-        if !self.fp.is_null() {
-            unsafe {
-                libc::fclose(self.fp);
-            }
-        }
-    }
-}
-
-struct PreparedWeights {
-    _storage: Vec<Vec<i32>>,
-}
-
-impl PreparedWeights {
-    fn rows(&self) -> &[Vec<i32>] {
-        &self._storage
-    }
-}
-
 fn encode_sequences(seqs: &[&[u8]], alphabet: Alphabet) -> Vec<Vec<u8>> {
     match alphabet {
         Alphabet::Dna => seqs.iter().map(|seq| encode_dna(seq)).collect(),
@@ -1665,10 +1630,10 @@ fn encode_sequences(seqs: &[&[u8]], alphabet: Alphabet) -> Vec<Vec<u8>> {
     }
 }
 
-fn prepare_quality_weights(
-    weights: Option<&[&[i32]]>,
+fn validate_quality_weights<'a>(
+    weights: Option<&'a [&'a [i32]]>,
     lengths: &[i32],
-) -> Result<Option<PreparedWeights>> {
+) -> Result<Option<&'a [&'a [i32]]>> {
     let Some(weights) = weights else {
         return Ok(None);
     };
@@ -1678,7 +1643,6 @@ fn prepare_quality_weights(
         ));
     }
 
-    let mut storage = Vec::with_capacity(weights.len());
     for (row, &len) in weights.iter().zip(lengths) {
         let expected = len.max(0) as usize;
         if row.len() != expected {
@@ -1686,9 +1650,8 @@ fn prepare_quality_weights(
                 "quality weights must match each sequence length".into(),
             ));
         }
-        storage.push(row.to_vec());
     }
-    Ok(Some(PreparedWeights { _storage: storage }))
+    Ok(Some(weights))
 }
 
 fn has_consensus_sequence(abs: *const sys::abpoa_seq_t) -> Result<bool> {

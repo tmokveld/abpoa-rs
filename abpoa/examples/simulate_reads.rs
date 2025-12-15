@@ -147,14 +147,7 @@ fn main() -> Result<()> {
         result.clusters.len()
     );
 
-    let opts = abpoa::PogDotOptions {
-        edge_penwidth: abpoa::EdgePenWidth::ProportionalToMax {
-            min: 0.5,
-            max: 10.0,
-        },
-        ..abpoa::PogDotOptions::default()
-    };
-    aligner.write_pog_to_path("test.pdf", &opts)?;
+    aligner.write_pog_to_path("test.pdf", &abpoa::PogDotOptions::default())?;
 
     Ok(())
 }

@@ -29,9 +29,9 @@ impl RankDir {
 /// How to map abPOA edge weights to GraphViz `penwidth`
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EdgePenWidth {
-    /// Mirror upstream `abpoa_dump_pog`: `penwidth = weight + 1`
+    /// Mirror upstream `abpoa_dump_pog`: `penwidth = weight + 1`, does not look good for large weights
     Weight,
-    /// Scale `weight / max_weight` into `[min, max]`
+    /// Scale `weight / max_weight` into `[min, max]`, default
     ProportionalToMax { min: f32, max: f32 },
     /// Scale `weight / sum(outgoing_weights)` into `[min, max]`
     ProportionalToOutgoing { min: f32, max: f32 },
@@ -90,7 +90,6 @@ pub struct PogDotOptions {
 impl Default for PogDotOptions {
     fn default() -> Self {
         Self {
-            // Same as upstream `abpoa_plot.c` defaults
             rankdir: RankDir::LeftToRight,
             node_width: 1.0,
             node_style: "filled",
@@ -100,7 +99,10 @@ impl Default for PogDotOptions {
             edge_font_size: 20,
             edge_font_color: "red",
             edge_label: EdgeLabel::Weight,
-            edge_penwidth: EdgePenWidth::Weight,
+            edge_penwidth: EdgePenWidth::ProportionalToMax {
+                min: 0.5,
+                max: 10.0,
+            },
             show_aligned_mismatch: true,
         }
     }

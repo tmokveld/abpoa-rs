@@ -38,6 +38,8 @@ fn main() -> Result<()> {
         graph.node_count(),
     );
 
+    aligner.write_pog_to_path("test_1_initial.pdf", &abpoa::PogDotOptions::default())?;
+
     println!(
         "Appending the second part of {} sequences one by one...",
         second_part
@@ -52,6 +54,8 @@ fn main() -> Result<()> {
         first_part + second_part,
         graph.node_count(),
     );
+
+    aligner.write_pog_to_path("test_2_second_part.pdf", &abpoa::PogDotOptions::default())?;
 
     println!(
         "Appending the remaining {} sequences together...",
@@ -71,6 +75,8 @@ fn main() -> Result<()> {
         result.msa.len(),
         graph.node_count()
     );
+
+    aligner.write_pog_to_path("test_3_final.pdf", &abpoa::PogDotOptions::default())?;
 
     println!("\nMSA rows:");
     for row in result.msa {

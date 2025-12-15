@@ -84,5 +84,7 @@ fn main() -> Result<()> {
         println!("  {}", row);
     }
 
+    aligner.write_pog_to_path("test.pdf", &abpoa::PogDotOptions::default())?;
+
     Ok(())
 }

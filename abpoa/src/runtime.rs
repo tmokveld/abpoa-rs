@@ -24,4 +24,3 @@ pub(crate) fn ensure_output_tables() {
         });
     });
 }
-
