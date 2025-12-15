@@ -94,13 +94,48 @@ impl Parameters {
         if !self.dirty {
             return;
         }
-        // Safety: `raw` is a valid, initialized parameter pointer expected by abPOA
-        unsafe {
-            sys::abpoa_post_set_para(self.raw.as_ptr());
-            self.raw
-                .as_mut()
-                .set_use_read_ids(self.preserve_read_ids as u8);
+        let needs_output_tables = unsafe {
+            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+            let raw = self.raw.as_ref();
+            raw.out_msa() != 0
+                || raw.out_gfa() != 0
+                || raw.max_n_cons > 1
+                || raw.cons_algrm == sys::ABPOA_MF as i32
+        };
+
+        if needs_output_tables {
+            crate::runtime::ensure_output_tables();
         }
+
+        crate::runtime::with_abpoa_global_write_lock(|| unsafe {
+            // Safety: we hold the crate-global lock to avoid concurrent mutation of abPOA's
+            // global tables from `abpoa_post_set_para`.
+            let raw = self.raw.as_mut();
+
+            let out_msa = raw.out_msa();
+            let out_gfa = raw.out_gfa();
+            let max_n_cons = raw.max_n_cons;
+            let cons_algrm = raw.cons_algrm;
+
+            if needs_output_tables {
+                // Avoid rewriting global output lookup tables in `abpoa_post_set_para`.
+                raw.set_out_msa(0);
+                raw.set_out_gfa(0);
+                raw.max_n_cons = 1;
+                raw.cons_algrm = sys::ABPOA_HB as i32;
+            }
+
+            sys::abpoa_post_set_para(self.raw.as_ptr());
+
+            if needs_output_tables {
+                raw.set_out_msa(out_msa);
+                raw.set_out_gfa(out_gfa);
+                raw.max_n_cons = max_n_cons;
+                raw.cons_algrm = cons_algrm;
+            }
+
+            raw.set_use_read_ids((self.preserve_read_ids || needs_output_tables) as u8);
+        });
         self.apply_custom_matrix();
         self.dirty = false;
     }
@@ -166,8 +201,29 @@ impl Parameters {
         unsafe {
             self.raw.as_mut().set_use_qv(enabled as u8);
         }
-        self.mark_dirty();
         self
+    }
+
+    pub(crate) fn set_outputs_for_call(&mut self, outputs: OutputMode) {
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        unsafe {
+            let raw = self.raw.as_mut();
+            raw.set_out_cons(outputs.contains(OutputMode::CONSENSUS) as u8);
+            raw.set_out_msa(outputs.contains(OutputMode::MSA) as u8);
+        }
+        let needs_read_ids = unsafe {
+            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+            let raw = self.raw.as_ref();
+            raw.out_msa() != 0
+                || raw.out_gfa() != 0
+                || raw.max_n_cons > 1
+                || raw.cons_algrm == sys::ABPOA_MF as i32
+        };
+        let use_read_ids = self.preserve_read_ids || needs_read_ids;
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        unsafe {
+            self.raw.as_mut().set_use_read_ids(use_read_ids as u8);
+        }
     }
 
     pub fn set_use_read_ids(&mut self, enabled: bool) -> &mut Self {
@@ -1124,6 +1180,37 @@ mod tests {
         assert_eq!(raw.out_cons(), 1);
         assert_eq!(raw.out_msa(), 1);
         assert_eq!(params.outputs(), OutputMode::CONSENSUS | OutputMode::MSA);
+    }
+
+    #[test]
+    fn use_read_ids_forced_for_msa_output() {
+        let mut params = Parameters::configure().unwrap();
+        params.set_use_read_ids(false);
+        let _ = params.as_mut_ptr();
+
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.out_msa(), 1);
+        assert_eq!(raw.use_read_ids(), 1);
+    }
+
+    #[test]
+    fn set_outputs_for_call_updates_use_read_ids() {
+        let mut params = Parameters::new().unwrap();
+        params.set_outputs(OutputMode::CONSENSUS);
+        params.set_use_read_ids(false);
+        let _ = params.as_mut_ptr();
+
+        assert!(!params.dirty);
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.out_msa(), 0);
+        assert_eq!(raw.use_read_ids(), 0);
+
+        params.set_outputs_for_call(OutputMode::MSA);
+
+        assert!(!params.dirty);
+        let raw = unsafe { params.raw.as_ref() };
+        assert_eq!(raw.out_msa(), 1);
+        assert_eq!(raw.use_read_ids(), 1);
     }
 
     #[test]

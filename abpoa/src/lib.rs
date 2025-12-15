@@ -27,6 +27,8 @@ pub mod output;
 pub mod params;
 #[cfg(unix)]
 pub mod result;
+#[cfg(unix)]
+mod runtime;
 
 #[cfg(unix)]
 pub use crate::aligner::{
@@ -70,6 +72,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Shared view of abPOA's precomputed integer log2 table for 16-bit values
 #[cfg(unix)]
 pub fn log_table_65536() -> &'static [u8] {
+    runtime::ensure_output_tables();
     // Safety: `AB_LOG_TABLE_65536` points to static storage sized to 2^16 entries and lives
     // for the duration of the process
     unsafe {
@@ -81,6 +84,7 @@ pub fn log_table_65536() -> &'static [u8] {
 /// Shared view of abPOA's precomputed bit-count table for 16-bit values
 #[cfg(unix)]
 pub fn bit_table_16() -> &'static [u8] {
+    runtime::ensure_output_tables();
     // Safety: `AB_BIT_TABLE_16` points to static storage sized to 2^16 entries and lives
     // for the duration of the process
     unsafe {

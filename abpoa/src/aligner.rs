@@ -7,12 +7,13 @@ use crate::encode::{
     Alphabet, decode_aa, decode_aa_code, decode_dna, decode_dna_code, encode_aa, encode_dna,
 };
 use crate::graph::Graph;
+pub use crate::output::{
+    dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir},
+    pog::PogWriteOptions,
+};
 use crate::params::{NodeId, OutputMode, Parameters, SentinelNode};
 use crate::result::{EncodedMsaResult, MsaResult};
 use crate::{Error, Result, sys};
-
-pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
-pub use crate::output::pog::PogWriteOptions;
 use libc;
 use std::{
     env,
@@ -383,9 +384,13 @@ impl Aligner {
         })
     }
 
-    /// Restore an aligner from a serialized graph (FASTA/GFA) in one call (note that this will use default Parameters!)
+    /// Restore an aligner from a serialized graph (FASTA/GFA) in one call (uses default Parameters,
+    /// but disables MSA output when `preserve_read_ids` is `false`).
     pub fn from_graph_file<P: AsRef<Path>>(path: P, preserve_read_ids: bool) -> Result<Self> {
         let mut params = Parameters::configure()?;
+        if !preserve_read_ids {
+            params.set_outputs(OutputMode::CONSENSUS);
+        }
         params.set_use_read_ids(preserve_read_ids);
         params.set_incremental_graph_file(path)?;
         let mut aligner = Self::with_params(params)?;
@@ -408,8 +413,6 @@ impl Aligner {
 
     #[cfg(test)]
     /// Borrow the underlying parameters mutably for test-only reconfiguration
-    ///
-    /// Mutations are automatically finalized the next time parameters cross the FFI boundary
     pub(crate) fn params_mut(&mut self) -> &mut Parameters {
         &mut self.params
     }
@@ -966,6 +969,7 @@ impl Aligner {
         outputs: OutputMode,
         convert: impl FnOnce(*const sys::abpoa_cons_t, Alphabet) -> T,
     ) -> Result<T> {
+        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         if self.graph_is_empty() {
             let alphabet = self.alphabet();
@@ -979,7 +983,7 @@ impl Aligner {
         }
 
         let alphabet = self.alphabet();
-        self.params.set_outputs(outputs);
+        self.params.set_outputs_for_call(outputs);
 
         if outputs.contains(OutputMode::MSA) {
             // Safety: aligner and parameters are live; abPOA will populate `abc` with MSA/consensus
@@ -1005,9 +1009,10 @@ impl Aligner {
             return Ok(());
         }
 
+        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
-        self.params.set_outputs(OutputMode::CONSENSUS);
+        self.params.set_outputs_for_call(OutputMode::CONSENSUS);
 
         unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
         let abc = unsafe { (*self.as_ptr()).abc };
@@ -1050,9 +1055,10 @@ impl Aligner {
             return Ok(());
         }
 
+        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         self.params
-            .set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
+            .set_outputs_for_call(OutputMode::CONSENSUS | OutputMode::MSA);
         let alphabet = self.alphabet();
         let decode_row: fn(&[u8]) -> String = match alphabet {
             Alphabet::Dna => decode_dna,
@@ -1123,6 +1129,7 @@ impl Aligner {
             return Ok(());
         }
 
+        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         let abs_ptr = unsafe { (*self.as_ptr()).abs };
         let has_consensus = has_consensus_sequence(abs_ptr)?;
@@ -1132,7 +1139,7 @@ impl Aligner {
         } else {
             OutputMode::CONSENSUS | OutputMode::MSA
         };
-        self.params.set_outputs(desired_outputs);
+        self.params.set_outputs_for_call(desired_outputs);
 
         let file = OpenOptions::new()
             .read(true)
@@ -1196,14 +1203,14 @@ impl Aligner {
         read_result
     }
 
-    /// Write a GraphViz view of the current partial order graph (POG) to `path`.
+    /// Write a GraphViz view of the current partial order graph (POG) to `path`
     ///
     /// Supported extensions:
     /// - `.dot`: write GraphViz DOT
     /// - `.png` / `.pdf`: write an image using GraphViz `dot`
     ///
     /// When writing `.png`/`.pdf`, a DOT file is written next to `path` at `path + ".dot"`
-    /// (mirroring upstream).
+    /// (mirroring upstream)
     ///
     /// `options` can be:
     /// - [`PogDotOptions`] (or `&PogDotOptions`) to use the Rust DOT emitter
@@ -1366,10 +1373,11 @@ impl Aligner {
             ));
         }
 
+        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         self.params
             .set_use_quality(batch.quality_weights().is_some());
-        self.params.set_outputs(outputs);
+        self.params.set_outputs_for_call(outputs);
 
         let alphabet = self.alphabet();
         let encoded = encode_sequences(seqs, alphabet);

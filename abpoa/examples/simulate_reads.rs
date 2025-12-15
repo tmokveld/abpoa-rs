@@ -72,7 +72,6 @@ fn main() -> Result<()> {
 
     // If None, generate B independently, and if Some(n), derive B from A by mutating every n-th
     // base and then resizing to len_b.
-
     let mutate_every_b = None;
     // let mutate_every_b = Some(5);
 

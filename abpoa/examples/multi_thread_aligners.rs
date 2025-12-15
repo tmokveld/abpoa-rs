@@ -1,14 +1,18 @@
 //! Spawn multiple threads, each with its own `Aligner`.
 //!
-//!
 //! `Aligner` and `Parameters` are intentionally `!Send`/`!Sync` in this crate, so you can't
 //! create an aligner on one thread and move it to another. The usual pattern is to construct
 //! one aligner inside each worker thread and keep it there for the thread's lifetime.
+//!
+//! You can verify the Rust wrapper does not trigger upstream abPOA global-table data races
+//! under TSAN, e.g.:
+//! ```
+//! MallocNanoZone=0 TSAN_OPTIONS="halt_on_error=1" CC=clang CFLAGS_aarch64_apple_darwin="-fsanitize=thread -fno-omit-frame-pointer -O1 -g" RUSTFLAGS="-Zsanitizer=thread" cargo +nightly run -Zbuild-std --target aarch64-apple-darwin -p abpoa --example multi_thread_aligners
+//! ```
+//! This should run without ThreadSanitizer reporting a data race.
 
 use abpoa::{Aligner, OutputMode, Parameters, Result, SequenceBatch};
-use std::sync::Arc;
-use std::thread;
-use std::time::Instant;
+use std::{sync::Arc, thread, time::Instant};
 
 #[path = "shared/sim.rs"]
 mod sim;
@@ -73,7 +77,8 @@ fn run_once(
 ) -> Result<String> {
     let read_refs: Vec<&[u8]> = reads.iter().map(|r| r.as_slice()).collect();
     let mut params = Parameters::configure()?;
-    params.set_outputs(OutputMode::CONSENSUS);
+    params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
+    params.set_consensus(abpoa::ConsensusAlgorithm::MostFrequent, 2, 0.3)?;
     let mut aligner = Aligner::with_params(params)?;
 
     let label = match worker_idx {

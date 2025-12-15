@@ -62,6 +62,20 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
 
 See further down for examples using the API.
 
+## Thread safety
+
+abPOA is a C library with some global state. The wrapper is conservative about what it allows across
+threads and includes a small amount of internal synchronization to avoid known upstream data races.
+
+- `Aligner` and `Parameters` are intentionally `!Send`/`!Sync`: don't share a single instance across
+  threads. Create one `Aligner` per worker thread and keep it on that thread.
+- Don't run DNA and amino-acid alignments concurrently in the same process. Upstream abPOA uses
+  global character mapping tables that are switched during parameter finalization.
+- Multi-threading is expected to work well for DNA or amino-acid only workloads when you use one aligner per
+  thread (see `abpoa/examples/multi_thread_aligners.rs`).
+
+Ongoing work to improve this.
+
 ## One-shot vs incremental APIs
 
 abPOA exposes two different execution paths, and the wrapper mirrors that split:
@@ -111,10 +125,12 @@ Look into the `abpoa/examples/` directory to see examples on how to use the API:
 
 - `example_c.rs`: end-to-end one-shot MSA with minimizer seeding, per-base quality weights, and FASTA/GFA outputs.
 - `oneshot_seeding.rs`: when seeding/guide trees do (and do not) apply, compares one-shot vs incremental paths.
+- `multi_thread_aligners.rs`: using one aligner per thread and validating thread safety under TSAN.
 - `incremental_msa.rs`: streaming/incremental graph growth (`msa_in_place`, `add_sequences`, `finalize_msa`).
 - `manual_graph_build.rs`: low-level alignment loop (`reset`, `align_sequence_raw`, `add_alignment`) and custom scoring/consensus.
 - `subgraph_slice_alignment.rs` and `per_read_subalignments.rs`: aligning reads to selected subgraphs/windows.
 - `graph_io.rs`: exporting MSA/GFA, restoring graphs, read names, and reverse‑complement aware MSA (`set_ambiguous_strand`).
+- `simulate_reads.rs`: generating synthetic reads from two consensuses and recovering both consensus sequences.
 
 The wrapper exposes a more than the examples show, feel free to explore.
 

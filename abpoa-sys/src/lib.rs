@@ -14,6 +14,12 @@ unsafe extern "C" {
 
     /// Copy a byte slice into an `abpoa_str_t` (null-terminating it)
     pub fn abpoa_cpy_str(str_: *mut sys::abpoa_str_t, s: *mut libc::c_char, l: libc::c_int);
+
+    /// Initialize the global 16-bit integer log2 lookup table (`ab_LogTable65536`).
+    pub fn set_65536_table();
+
+    /// Initialize the global 16-bit bit-count lookup table (`ab_bit_table16`).
+    pub fn set_bit_table16();
 }
 
 /// Pointer wrapper for accessing abPOA's internal lookup tables
