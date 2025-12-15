@@ -39,7 +39,7 @@ pub use crate::encode::Alphabet;
 #[cfg(unix)]
 pub use crate::graph::{Graph, NodeRef, NodeView, Sequence, SequenceIter, SequenceStr, Sequences};
 #[cfg(unix)]
-pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
+pub use crate::output::dot::{EdgeLabel, EdgePenWidth, NodeLabel, PogDotOptions, RankDir};
 #[cfg(unix)]
 pub use crate::output::pog::PogWriteOptions;
 #[cfg(unix)]

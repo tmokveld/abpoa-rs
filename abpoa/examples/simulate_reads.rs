@@ -123,6 +123,14 @@ fn main() -> Result<()> {
         OutputMode::CONSENSUS,
     )?;
 
+    result.clusters.iter().for_each(|cluster| {
+        println!("Cluster read ids: {:?}", cluster.read_ids);
+        println!("Cluster consensus: {:?}", cluster.consensus);
+        println!("Cluster node ids: {:?}", cluster.node_ids);
+        println!("Cluster coverage: {:?}", cluster.coverage);
+        println!("Cluster phred: {:?}", cluster.phred);
+    });
+
     println!(
         "Actual consensus A:\n{}",
         std::str::from_utf8(&consensus_a).unwrap()

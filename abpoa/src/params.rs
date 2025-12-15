@@ -361,18 +361,7 @@ impl Parameters {
         self
     }
 
-    /// Configure match and mismatch scores
-    pub fn set_scoring(&mut self, match_score: i32, mismatch: i32) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
-        unsafe {
-            let raw = self.raw.as_mut();
-            raw.match_ = match_score;
-            raw.mismatch = mismatch;
-        }
-        self.mark_dirty();
-        self
-    }
-
+    /// Set the scoring scheme for the alignment
     pub fn set_scoring_scheme(&mut self, scoring: Scoring) -> Result<&mut Self> {
         scoring.validate()?;
 
@@ -814,7 +803,7 @@ pub struct Scoring {
 }
 
 impl Scoring {
-    /// Linear gap model (`gap_open1 = 0`, `gap_ext1 = gap`)
+    /// Linear gap model
     pub fn linear(match_score: i32, mismatch: i32, gap: i32) -> Self {
         Self {
             match_score,
@@ -823,7 +812,7 @@ impl Scoring {
         }
     }
 
-    /// Affine gap model (`gap_open1`/`gap_ext1`)
+    /// Affine gap model
     pub fn affine(match_score: i32, mismatch: i32, gap_open: i32, gap_extend: i32) -> Self {
         Self {
             match_score,
@@ -835,7 +824,7 @@ impl Scoring {
         }
     }
 
-    /// Convex gap model (`gap_open1`/`gap_ext1`, `gap_open2`/`gap_ext2`)
+    /// Convex gap model
     pub fn convex(
         match_score: i32,
         mismatch: i32,
@@ -1120,7 +1109,9 @@ mod tests {
         assert_eq!(raw.gap_open2, 11);
         assert_eq!(raw.gap_ext2, 12);
 
-        params.set_scoring(11, 13);
+        params
+            .set_scoring_scheme(Scoring::linear(11, 13, 2))
+            .unwrap();
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.match_, 11);
         assert_eq!(raw.mismatch, 13);

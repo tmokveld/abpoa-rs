@@ -70,6 +70,17 @@ pub enum EdgeLabel {
     ProportionOfOutgoing { precision: usize },
 }
 
+/// Which metadata to include in DOT node labels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeLabel {
+    /// Match upstream `abpoa_dump_pog`: base + topological index
+    BaseAndTopologicalIndex,
+    /// Base + explicit node id (`id:<node_id>`)
+    BaseAndNodeId,
+    /// Base + explicit topological index (`idx:<topo>`) + explicit node id (`id:<node_id>`)
+    BaseTopologicalIndexAndNodeId,
+}
+
 /// Rendering settings for [`crate::Aligner::write_pog_to_path`] when using
 /// [`crate::PogWriteOptions::Rust`]
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +91,7 @@ pub struct PogDotOptions {
     pub node_fixedsize: bool,
     pub node_shape: &'static str,
     pub node_font_size: u32,
+    pub node_label: NodeLabel,
     pub edge_font_size: u32,
     pub edge_font_color: &'static str,
     pub edge_label: EdgeLabel,
@@ -96,6 +108,7 @@ impl Default for PogDotOptions {
             node_fixedsize: true,
             node_shape: "circle",
             node_font_size: 24,
+            node_label: NodeLabel::BaseAndNodeId,
             edge_font_size: 20,
             edge_font_color: "red",
             edge_label: EdgeLabel::Weight,
@@ -190,10 +203,18 @@ pub fn write_pog_dot(
             (base, color)
         };
 
+        let label = match options.node_label {
+            NodeLabel::BaseAndTopologicalIndex => format!("{base}\\n{topo_idx}"),
+            NodeLabel::BaseAndNodeId => format!("{base}\\nid:{}", node_id.0),
+            NodeLabel::BaseTopologicalIndexAndNodeId => {
+                format!("{base}\\nidx:{topo_idx}\\nid:{}", node_id.0)
+            }
+        };
+
         writeln!(
             writer,
-            "\tn{} [label=\"{}\\n{}\", color={}, fontsize={}];",
-            node_id.0, base, topo_idx, color, options.node_font_size
+            "\tn{} [label=\"{}\", color={}, fontsize={}];",
+            node_id.0, label, color, options.node_font_size
         )?;
     }
 
@@ -288,5 +309,57 @@ fn normalize_range(min: f32, max: f32) -> (f32, f32) {
         (max, max)
     } else {
         (1.0, 1.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dot_output_surfaces_consensus_node_ids() {
+        let sequences = [b"ACGT".as_ref(), b"ACGT".as_ref()];
+        let mut aligner = crate::Aligner::new().unwrap();
+        aligner
+            .msa_in_place(crate::SequenceBatch::from_sequences(&sequences))
+            .unwrap();
+        let result = aligner.finalize_msa(crate::OutputMode::CONSENSUS).unwrap();
+        assert!(
+            !result.clusters.is_empty(),
+            "consensus should produce at least one cluster"
+        );
+        assert!(
+            !result.clusters[0].node_ids.is_empty(),
+            "consensus should include node ids"
+        );
+
+        aligner.ensure_topological().unwrap();
+        let graph = aligner.graph().unwrap();
+
+        let mut options = PogDotOptions::default();
+        options.node_label = NodeLabel::BaseTopologicalIndexAndNodeId;
+
+        let mut dot = Vec::new();
+        write_pog_dot(&graph, crate::Alphabet::Dna, &mut dot, &options).unwrap();
+        let dot = String::from_utf8(dot).unwrap();
+
+        assert!(
+            dot.contains("\\nidx:") && dot.contains("\\nid:"),
+            "node labels should include both topological index and node id"
+        );
+
+        for node_id in &result.clusters[0].node_ids {
+            assert!(
+                dot.contains(&format!("n{} [", node_id.0)),
+                "dot output should include consensus node id {}",
+                node_id.0
+            );
+        }
+
+        let first = result.clusters[0].node_ids[0];
+        assert!(
+            dot.contains(&format!("id:{}", first.0)),
+            "dot labels should include the consensus node id"
+        );
     }
 }

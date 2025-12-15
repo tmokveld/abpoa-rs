@@ -1,15 +1,24 @@
 //! Structures representing consensus clusters and MSA output
 
 use crate::encode::{Alphabet, decode_aa, decode_dna};
+use crate::params::NodeId;
 use crate::sys;
 use std::slice;
 
-/// Consensus cluster containing a consensus string and coverage metadata
+/// Consensus cluster containing a consensus string and per-base metadata
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cluster {
     pub read_ids: Vec<i32>,
     pub consensus: String,
+    /// Graph node id corresponding to each consensus base (same length as `consensus`)
+    pub node_ids: Vec<NodeId>,
     pub coverage: Vec<i32>,
+    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`)
+    ///
+    /// If per-base input qualities are not provided, abPOA derives these scores from the
+    /// per-base consensus coverage and the number of reads in the cluster (see upstream
+    /// `abpoa_cons_phred_score`).
+    pub phred: Vec<u8>,
 }
 
 /// Output of a one-shot MSA run: per-sequence alignments plus consensus clusters
@@ -24,7 +33,15 @@ pub struct MsaResult {
 pub struct EncodedCluster {
     pub read_ids: Vec<i32>,
     pub consensus: Vec<u8>,
+    /// Graph node id corresponding to each consensus base (same length as `consensus`)
+    pub node_ids: Vec<NodeId>,
     pub coverage: Vec<i32>,
+    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`)
+    ///
+    /// If per-base input qualities are not provided, abPOA derives these scores from the
+    /// per-base consensus coverage and the number of reads in the cluster (see upstream
+    /// `abpoa_cons_phred_score`).
+    pub phred: Vec<u8>,
 }
 
 /// MSA and consensus output in the raw abPOA integer alphabet.
@@ -63,7 +80,9 @@ impl MsaResult {
             .map(|cluster| Cluster {
                 read_ids: cluster.read_ids,
                 consensus: decode_row(&cluster.consensus),
+                node_ids: cluster.node_ids,
                 coverage: cluster.coverage,
+                phred: cluster.phred,
             })
             .collect();
 
@@ -84,7 +103,9 @@ impl EncodedMsaResult {
             .map(|cluster| EncodedCluster {
                 read_ids: cluster.read_ids,
                 consensus: cluster.consensus,
+                node_ids: cluster.node_ids,
                 coverage: cluster.coverage,
+                phred: cluster.phred,
             })
             .collect();
 
@@ -95,7 +116,9 @@ impl EncodedMsaResult {
 struct RawCluster {
     read_ids: Vec<i32>,
     consensus: Vec<u8>,
+    node_ids: Vec<NodeId>,
     coverage: Vec<i32>,
+    phred: Vec<u8>,
 }
 
 struct RawParsedResult {
@@ -158,6 +181,36 @@ unsafe fn parse_raw(abc: *const sys::abpoa_cons_t) -> RawParsedResult {
                     }
                 };
 
+                let node_ids = if abc.cons_node_ids.is_null() {
+                    Vec::new()
+                } else {
+                    let ids_ptr = unsafe { *abc.cons_node_ids.add(cons_idx) };
+                    if len == 0 || ids_ptr.is_null() {
+                        Vec::new()
+                    } else {
+                        unsafe { slice::from_raw_parts(ids_ptr, len) }
+                            .iter()
+                            .copied()
+                            .map(NodeId)
+                            .collect()
+                    }
+                };
+
+                let phred = if abc.cons_phred_score.is_null() {
+                    Vec::new()
+                } else {
+                    let phred_ptr = unsafe { *abc.cons_phred_score.add(cons_idx) };
+                    if len == 0 || phred_ptr.is_null() {
+                        Vec::new()
+                    } else {
+                        unsafe { slice::from_raw_parts(phred_ptr, len) }
+                            .iter()
+                            .copied()
+                            .map(|score| u8::try_from(score).unwrap_or(b'!'))
+                            .collect()
+                    }
+                };
+
                 let read_ids = if abc.clu_n_seq.is_null() || abc.clu_read_ids.is_null() {
                     Vec::new()
                 } else {
@@ -177,7 +230,9 @@ unsafe fn parse_raw(abc: *const sys::abpoa_cons_t) -> RawParsedResult {
                 RawCluster {
                     read_ids,
                     consensus,
+                    node_ids,
                     coverage,
+                    phred,
                 }
             })
             .collect()

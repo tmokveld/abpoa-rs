@@ -1049,6 +1049,76 @@ impl Aligner {
         })()
     }
 
+    /// Write consensus sequences in FASTQ form to a Rust `Write`
+    pub fn write_consensus_fastq(&mut self, writer: &mut impl Write) -> Result<()> {
+        if self.graph_is_empty() {
+            return Ok(());
+        }
+
+        crate::runtime::ensure_output_tables();
+        self.reset_cached_outputs()?;
+        let alphabet = self.alphabet();
+        self.params.set_outputs_for_call(OutputMode::CONSENSUS);
+
+        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+        let abc = unsafe { (*self.as_ptr()).abc };
+        if abc.is_null() {
+            return Err(Error::NullPointer(
+                "abpoa returned a null consensus pointer",
+            ));
+        }
+
+        let result = unsafe { MsaResult::from_raw(abc, alphabet) };
+        let batch_index = unsafe { self.params.as_mut_ptr().as_ref() }
+            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?
+            .batch_index;
+
+        (|| -> Result<()> {
+            for (cluster_idx, cluster) in result.clusters.iter().enumerate() {
+                let expected_len = cluster.consensus.as_bytes().len();
+                if cluster.phred.len() != expected_len {
+                    return Err(Error::InvalidInput(
+                        "consensus phred length did not match consensus sequence length".into(),
+                    ));
+                }
+
+                write!(writer, "@Consensus_sequence")?;
+                if batch_index > 0 {
+                    write!(writer, "_{}", batch_index)?;
+                }
+                if result.clusters.len() > 1 {
+                    write!(writer, "_{} ", cluster_idx + 1)?;
+                    for (read_idx, read_id) in cluster.read_ids.iter().enumerate() {
+                        if read_idx > 0 {
+                            write!(writer, ",")?;
+                        }
+                        write!(writer, "{}", read_id)?;
+                    }
+                }
+                writeln!(writer)?;
+                writeln!(writer, "{}", cluster.consensus)?;
+
+                write!(writer, "+Consensus_sequence")?;
+                if batch_index > 0 {
+                    write!(writer, "_{}", batch_index)?;
+                }
+                if result.clusters.len() > 1 {
+                    write!(writer, "_{} ", cluster_idx + 1)?;
+                    for (read_idx, read_id) in cluster.read_ids.iter().enumerate() {
+                        if read_idx > 0 {
+                            write!(writer, ",")?;
+                        }
+                        write!(writer, "{}", read_id)?;
+                    }
+                }
+                writeln!(writer)?;
+                writer.write_all(&cluster.phred)?;
+                writeln!(writer)?;
+            }
+            Ok(())
+        })()
+    }
+
     /// Write RC-MSA output (optionally including consensus rows) to a Rust `Write`
     pub fn write_msa_fasta(&mut self, writer: &mut impl Write) -> Result<()> {
         if self.graph_is_empty() {
@@ -1832,6 +1902,16 @@ mod tests {
         assert_eq!(decoded.msa[0].len(), 4);
         assert!(!decoded.clusters.is_empty());
         assert_eq!(decoded.clusters[0].consensus, "ACGT");
+        for cluster in &decoded.clusters {
+            let len = cluster.consensus.len();
+            assert_eq!(cluster.node_ids.len(), len);
+            assert_eq!(cluster.coverage.len(), len);
+            assert_eq!(cluster.phred.len(), len);
+            assert!(
+                cluster.phred.iter().all(|q| q.is_ascii_graphic()),
+                "phred scores should be printable FASTQ bytes"
+            );
+        }
 
         let encoded = aligner
             .msa_encoded(
@@ -1849,7 +1929,9 @@ mod tests {
         for (enc_cluster, dec_cluster) in encoded.clusters.iter().zip(decoded.clusters.iter()) {
             assert_eq!(enc_cluster.read_ids, dec_cluster.read_ids);
             assert_eq!(decode_dna(&enc_cluster.consensus), dec_cluster.consensus);
+            assert_eq!(enc_cluster.node_ids, dec_cluster.node_ids);
             assert_eq!(enc_cluster.coverage, dec_cluster.coverage);
+            assert_eq!(enc_cluster.phred, dec_cluster.phred);
         }
 
         let sequences_with_gap = [b"ACGT".as_ref(), b"AGT".as_ref()];
@@ -1909,6 +1991,43 @@ mod tests {
             output.contains("ACGT"),
             "consensus sequence should match aligned reads"
         );
+    }
+
+    #[test]
+    fn consensus_fastq_writer_produces_valid_records() {
+        let mut aligner = Aligner::new().unwrap();
+        aligner
+            .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]))
+            .unwrap();
+
+        let mut buffer = Vec::new();
+        aligner.write_consensus_fastq(&mut buffer).unwrap();
+        let output = String::from_utf8(buffer).unwrap();
+        let lines: Vec<_> = output.lines().collect();
+        assert_eq!(
+            lines.len() % 4,
+            0,
+            "FASTQ output should have 4-line records"
+        );
+        for record in lines.chunks(4) {
+            assert!(
+                record[0].starts_with("@Consensus_sequence"),
+                "FASTQ record should have @ header"
+            );
+            assert!(
+                record[2].starts_with("+Consensus_sequence"),
+                "FASTQ record should have + header"
+            );
+            assert_eq!(
+                record[1].len(),
+                record[3].len(),
+                "FASTQ record should have matching sequence and quality lengths"
+            );
+            assert!(
+                record[3].as_bytes().iter().all(|q| q.is_ascii_graphic()),
+                "FASTQ quality line should contain printable bytes"
+            );
+        }
     }
 
     #[test]
@@ -2245,7 +2364,9 @@ mod tests {
         for (enc_cluster, dec_cluster) in encoded.clusters.iter().zip(decoded.clusters.iter()) {
             assert_eq!(enc_cluster.read_ids, dec_cluster.read_ids);
             assert_eq!(decode_aa(&enc_cluster.consensus), dec_cluster.consensus);
+            assert_eq!(enc_cluster.node_ids, dec_cluster.node_ids);
             assert_eq!(enc_cluster.coverage, dec_cluster.coverage);
+            assert_eq!(enc_cluster.phred, dec_cluster.phred);
         }
     }
 
