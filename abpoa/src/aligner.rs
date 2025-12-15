@@ -12,6 +12,7 @@ use crate::result::{EncodedMsaResult, MsaResult};
 use crate::{Error, Result, sys};
 
 pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
+pub use crate::output::pog::PogWriteOptions;
 use libc;
 use std::{
     env,
@@ -1195,159 +1196,133 @@ impl Aligner {
         read_result
     }
 
-    /// Dump a PNG/PDF graph visualization using the Rust DOT emitter and GraphViz `dot`
+    /// Write a GraphViz view of the current partial order graph (POG) to `path`.
     ///
-    /// A DOT file is written next to `path` at `path + ".dot"` (mirroring upstream)
-    pub fn write_pog_to_path<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        let options = PogDotOptions::default();
-        self.write_pog_to_path_with_options(path, &options)
-    }
-
-    /// Dump a DOT/PNG graph visualization to the given path using upstream abPOA's `abpoa_dump_pog`
+    /// Supported extensions:
+    /// - `.dot`: write GraphViz DOT
+    /// - `.png` / `.pdf`: write an image using GraphViz `dot`
     ///
-    /// This invokes GraphViz by calling `system("dot ...")` inside abPOA
-    /// Prefer [`write_pog_to_path`] / [`write_pog_to_path_with_options`] to avoid shell invocation
-    #[deprecated(
-        note = "calls upstream abpoa_dump_pog which uses system() to invoke `dot`; prefer write_pog_to_path[_with_options]"
-    )]
-    pub fn write_pog_to_path_upstream<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        if self.graph_is_empty() {
-            return Ok(());
-        }
-
-        match path.as_ref().extension().and_then(|ext| ext.to_str()) {
-            Some("png") | Some("pdf") => {}
-            _ => {
-                return Err(Error::InvalidInput(
-                    "graph dump path must end with .png or .pdf".into(),
-                ));
-            }
-        }
-
-        let path_str = path.as_ref().to_str().ok_or(Error::InvalidInput(
-            "graph dump path must be valid UTF-8".into(),
-        ))?;
-        let c_path = CString::new(path_str)
-            .map_err(|_| Error::InvalidInput("graph dump path cannot contain null bytes".into()))?;
-        let raw = unsafe { self.params.as_mut_ptr().as_mut() }
-            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
-        let previous = raw.out_pog;
-        // Safety: `c_path` is a valid C string; `strdup` allocates an owned copy
-        raw.out_pog = unsafe { libc::strdup(c_path.as_ptr()) };
-        if raw.out_pog.is_null() {
-            raw.out_pog = previous;
-            return Err(Error::NullPointer("failed to store graph dump path"));
-        }
-
-        // Safety: `self`/`self.params` are valid for the duration of the call
-        unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), self.params.as_mut_ptr()) };
-
-        unsafe {
-            libc::free(raw.out_pog as *mut libc::c_void);
-            raw.out_pog = previous;
-        }
-        Ok(())
-    }
-
-    /// Write a GraphViz DOT view of the current partial order graph (POG)
+    /// When writing `.png`/`.pdf`, a DOT file is written next to `path` at `path + ".dot"`
+    /// (mirroring upstream).
     ///
-    /// This mirrors the upstream `abpoa_dump_pog` DOT emission, but does not invoke `dot`
-    /// Use [`write_pog_to_path`] or [`write_pog_to_path_with_options`] to render to `png`/`pdf`
-    /// via GraphViz
-    pub fn write_pog_dot(
-        &mut self,
-        writer: &mut impl Write,
-        options: &PogDotOptions,
-    ) -> Result<()> {
-        if self.graph_is_empty() {
-            return Ok(());
-        }
-
-        self.ensure_topological()?;
-
-        let graph = self.graph()?;
-        crate::output::dot::write_pog_dot(&graph, self.alphabet(), writer, options)
-    }
-
-    /// Convenience helper that returns the DOT representation of the current POG
-    pub fn pog_dot(&mut self, options: &PogDotOptions) -> Result<String> {
-        let mut buf = Vec::new();
-        self.write_pog_dot(&mut buf, options)?;
-        Ok(String::from_utf8_lossy(&buf).into_owned())
-    }
-
-    /// Write a DOT file to `path` for the current POG
-    pub fn write_pog_dot_to_path<P: AsRef<Path>>(
+    /// `options` can be:
+    /// - [`PogDotOptions`] (or `&PogDotOptions`) to use the Rust DOT emitter
+    /// - [`PogWriteOptions::Upstream`] to call upstream `abpoa_dump_pog` (uses `system()` and may
+    ///   `exit()` on failure)
+    pub fn write_pog_to_path<P: AsRef<Path>>(
         &mut self,
         path: P,
-        options: &PogDotOptions,
-    ) -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path.as_ref())?;
-        self.write_pog_dot(&mut file, options)
-    }
-
-    /// Dump a PNG/PDF graph visualization using the Rust DOT emitter and `dot`
-    ///
-    /// A DOT file is written next to `path` at `path + ".dot"` (mirroring upstream)
-    pub fn write_pog_to_path_with_options<P: AsRef<Path>>(
-        &mut self,
-        path: P,
-        options: &PogDotOptions,
+        options: impl Into<PogWriteOptions>,
     ) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
         }
 
+        let path = path.as_ref();
         let ext = path
-            .as_ref()
             .extension()
             .and_then(|ext| ext.to_str())
             .ok_or(Error::InvalidInput(
-                "graph dump path must end with .png or .pdf".into(),
+                "graph dump path must end with .dot, .png, or .pdf".into(),
             ))?;
-        if ext != "png" && ext != "pdf" {
-            return Err(Error::InvalidInput(
-                "graph dump path must end with .png or .pdf".into(),
-            ));
-        }
 
-        let mut dot_path = std::ffi::OsString::from(path.as_ref().as_os_str());
-        dot_path.push(".dot");
-        let dot_path = PathBuf::from(dot_path);
+        match options.into() {
+            PogWriteOptions::Rust(dot_options) => {
+                self.ensure_topological()?;
+                let graph = self.graph()?;
 
-        self.write_pog_dot_to_path(&dot_path, options)?;
+                if ext == "dot" {
+                    let mut file = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .open(path)?;
+                    return crate::output::dot::write_pog_dot(
+                        &graph,
+                        self.alphabet(),
+                        &mut file,
+                        &dot_options,
+                    );
+                }
 
-        let status = process::Command::new("dot")
-            .arg(format!("-T{ext}"))
-            .arg("-o")
-            .arg(path.as_ref())
-            .arg(&dot_path)
-            .status();
+                if ext != "png" && ext != "pdf" {
+                    return Err(Error::InvalidInput(
+                        "graph dump path must end with .dot, .png, or .pdf".into(),
+                    ));
+                }
 
-        let status = match status {
-            Ok(status) => status,
-            Err(err) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("failed to execute `dot`: {err}"),
-                )
-                .into());
+                let mut dot_path = std::ffi::OsString::from(path.as_os_str());
+                dot_path.push(".dot");
+                let dot_path = PathBuf::from(dot_path);
+
+                {
+                    let mut file = OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .open(&dot_path)?;
+                    crate::output::dot::write_pog_dot(
+                        &graph,
+                        self.alphabet(),
+                        &mut file,
+                        &dot_options,
+                    )?;
+                }
+
+                let status = process::Command::new("dot")
+                    .arg(format!("-T{ext}"))
+                    .arg("-o")
+                    .arg(path)
+                    .arg(&dot_path)
+                    .status()
+                    .map_err(|err| {
+                        std::io::Error::other(format!("failed to execute `dot`: {err}"))
+                    })?;
+
+                if !status.success() {
+                    return Err(std::io::Error::other(format!(
+                        "`dot` exited with status {status}"
+                    ))
+                    .into());
+                }
+
+                Ok(())
             }
-        };
+            PogWriteOptions::Upstream => {
+                if ext != "png" && ext != "pdf" {
+                    return Err(Error::InvalidInput(
+                        "upstream graph dump requires a .png or .pdf path".into(),
+                    ));
+                }
 
-        if !status.success() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("`dot` exited with status {status}"),
-            )
-            .into());
+                let path_str = path.to_str().ok_or(Error::InvalidInput(
+                    "graph dump path must be valid UTF-8".into(),
+                ))?;
+                let c_path = CString::new(path_str).map_err(|_| {
+                    Error::InvalidInput("graph dump path cannot contain null bytes".into())
+                })?;
+
+                let raw = unsafe { self.params.as_mut_ptr().as_mut() }
+                    .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
+                let previous = raw.out_pog;
+                // Safety: `c_path` is a valid C string; `strdup` allocates an owned copy
+                raw.out_pog = unsafe { libc::strdup(c_path.as_ptr()) };
+                if raw.out_pog.is_null() {
+                    raw.out_pog = previous;
+                    return Err(Error::NullPointer("failed to store graph dump path"));
+                }
+
+                // Safety: `self`/`self.params` are valid for the duration of the call
+                unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+
+                unsafe {
+                    libc::free(raw.out_pog as *mut libc::c_void);
+                    raw.out_pog = previous;
+                }
+
+                Ok(())
+            }
         }
-
-        Ok(())
     }
 
     /// Run abPOA's one-shot MSA on a set of sequences and return the consensus/MSA output

@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     println!("\n=== consensus using write_consensus_fasta ===");
     aligner.write_consensus_fasta(&mut stdout)?;
 
-    // aligner.dump_pog(path)
+    aligner.write_pog_to_path("test.pdf", abpoa::PogDotOptions::default())?;
 
     Ok(())
 }

@@ -39,6 +39,8 @@ pub use crate::graph::{Graph, NodeRef, NodeView, Sequence, SequenceIter, Sequenc
 #[cfg(unix)]
 pub use crate::output::dot::{EdgeLabel, EdgePenWidth, PogDotOptions, RankDir};
 #[cfg(unix)]
+pub use crate::output::pog::PogWriteOptions;
+#[cfg(unix)]
 pub use crate::params::{
     AlignMode, ConsensusAlgorithm, GapMode, GapPenalty, NodeId, OutputMode, Parameters, Scoring,
     SentinelNode, Verbosity,

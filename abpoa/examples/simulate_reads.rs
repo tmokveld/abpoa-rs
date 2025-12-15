@@ -155,7 +155,7 @@ fn main() -> Result<()> {
         },
         ..abpoa::PogDotOptions::default()
     };
-    aligner.write_pog_to_path_with_options("test.pdf", &opts)?;
+    aligner.write_pog_to_path("test.pdf", &opts)?;
 
     Ok(())
 }

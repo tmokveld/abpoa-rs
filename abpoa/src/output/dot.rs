@@ -70,7 +70,8 @@ pub enum EdgeLabel {
     ProportionOfOutgoing { precision: usize },
 }
 
-/// Rendering settings for [`crate::Aligner::write_pog_dot`]
+/// Rendering settings for [`crate::Aligner::write_pog_to_path`] when using
+/// [`crate::PogWriteOptions::Rust`]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PogDotOptions {
     pub rankdir: RankDir,
@@ -107,7 +108,7 @@ impl Default for PogDotOptions {
 
 /// Write a GraphViz DOT view of a partial order graph (POG)
 ///
-/// This mirrors the upstream `abpoa_dump_pog` DOT emission, but does not invoke `dot`.
+/// This mirrors the upstream `abpoa_dump_pog` DOT emission, but does not invoke `dot`
 ///
 /// Note: the graph must be topologically sorted (e.g. via [`crate::Aligner::ensure_topological`])
 pub fn write_pog_dot(
