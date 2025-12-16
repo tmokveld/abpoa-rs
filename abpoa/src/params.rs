@@ -17,7 +17,6 @@ pub struct Parameters {
     raw: NonNull<sys::abpoa_para_t>,
     custom_matrix: Option<CustomMatrix>,
     alphabet: Alphabet,
-    preserve_read_ids: bool,
     dirty: bool,
     // Not Send/Sync: abPOA mutates global decoder tables during parameter setup
     _not_send_sync: PhantomData<Rc<()>>,
@@ -48,7 +47,7 @@ impl Parameters {
     /// Allocate a new parameter object with the default abPOA configuration
     pub fn new() -> Result<Self> {
         let mut params = Self::allocate()?;
-        params.finalize();
+        params.finalize()?;
         Ok(params)
     }
 
@@ -71,7 +70,6 @@ impl Parameters {
             raw,
             custom_matrix: None,
             alphabet: Alphabet::Dna,
-            preserve_read_ids: true,
             dirty: true,
             _not_send_sync: PhantomData,
         };
@@ -81,30 +79,54 @@ impl Parameters {
         Ok(params)
     }
 
-    pub(crate) fn as_mut_ptr(&mut self) -> *mut sys::abpoa_para_t {
-        self.finalize();
-        self.raw.as_ptr()
+    pub(crate) fn as_mut_ptr(&mut self) -> Result<*mut sys::abpoa_para_t> {
+        crate::runtime::ensure_output_tables();
+        self.validate_read_id_constraints()?;
+        self.finalize()?;
+        Ok(self.raw.as_ptr())
     }
 
     fn mark_dirty(&mut self) {
         self.dirty = true;
     }
 
-    fn finalize(&mut self) {
-        if !self.dirty {
-            return;
+    fn validate_read_id_constraints(&self) -> Result<()> {
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
+        let raw = unsafe { self.raw.as_ref() };
+        if raw.use_read_ids() != 0 {
+            return Ok(());
         }
-        let needs_output_tables = unsafe {
-            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
-            let raw = self.raw.as_ref();
-            raw.out_msa() != 0
-                || raw.out_gfa() != 0
-                || raw.max_n_cons > 1
-                || raw.cons_algrm == sys::ABPOA_MF as i32
-        };
 
-        if needs_output_tables {
-            crate::runtime::ensure_output_tables();
+        let mut violations = Vec::new();
+        if raw.out_msa() != 0 {
+            violations.push("MSA output");
+        }
+        if raw.out_gfa() != 0 {
+            violations.push("GFA output");
+        }
+        if raw.max_n_cons > 1 {
+            violations.push("multiple consensus output (max_n_cons > 1)");
+        }
+        if raw.cons_algrm == sys::ABPOA_MF as i32 {
+            violations.push("MostFrequent consensus");
+        }
+
+        if violations.is_empty() {
+            return Ok(());
+        }
+
+        Err(Error::InvalidInput(
+            format!(
+                "use_read_ids is disabled, but the following require read ids: {}",
+                violations.join(", ")
+            )
+            .into(),
+        ))
+    }
+
+    fn finalize(&mut self) -> Result<()> {
+        if !self.dirty {
+            return Ok(());
         }
 
         crate::runtime::with_abpoa_global_write_lock(|| unsafe {
@@ -112,32 +134,35 @@ impl Parameters {
             // global tables from `abpoa_post_set_para`.
             let raw = self.raw.as_mut();
 
+            // abPOA rewrites global lookup tables and may override `use_read_ids` based on output
+            // settings during `abpoa_post_set_para`. We own those global tables and enforce
+            // `use_read_ids` constraints at the Rust boundary, so keep the caller-supplied output
+            // configuration intact by temporarily clearing output-related fields and restoring
+            // them after finalization.
+            let out_cons = raw.out_cons();
             let out_msa = raw.out_msa();
             let out_gfa = raw.out_gfa();
             let max_n_cons = raw.max_n_cons;
             let cons_algrm = raw.cons_algrm;
+            let use_read_ids = raw.use_read_ids();
 
-            if needs_output_tables {
-                // Avoid rewriting global output lookup tables in `abpoa_post_set_para`.
-                raw.set_out_msa(0);
-                raw.set_out_gfa(0);
-                raw.max_n_cons = 1;
-                raw.cons_algrm = sys::ABPOA_HB as i32;
-            }
+            raw.set_out_msa(0);
+            raw.set_out_gfa(0);
+            raw.max_n_cons = 1;
+            raw.cons_algrm = sys::ABPOA_HB as i32;
 
             sys::abpoa_post_set_para(self.raw.as_ptr());
 
-            if needs_output_tables {
-                raw.set_out_msa(out_msa);
-                raw.set_out_gfa(out_gfa);
-                raw.max_n_cons = max_n_cons;
-                raw.cons_algrm = cons_algrm;
-            }
-
-            raw.set_use_read_ids((self.preserve_read_ids || needs_output_tables) as u8);
+            raw.set_out_cons(out_cons);
+            raw.set_out_msa(out_msa);
+            raw.set_out_gfa(out_gfa);
+            raw.max_n_cons = max_n_cons;
+            raw.cons_algrm = cons_algrm;
+            raw.set_use_read_ids(use_read_ids);
         });
         self.apply_custom_matrix();
         self.dirty = false;
+        Ok(())
     }
 
     /// Configure the alphabet used for encoding sequences
@@ -211,23 +236,9 @@ impl Parameters {
             raw.set_out_cons(outputs.contains(OutputMode::CONSENSUS) as u8);
             raw.set_out_msa(outputs.contains(OutputMode::MSA) as u8);
         }
-        let needs_read_ids = unsafe {
-            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
-            let raw = self.raw.as_ref();
-            raw.out_msa() != 0
-                || raw.out_gfa() != 0
-                || raw.max_n_cons > 1
-                || raw.cons_algrm == sys::ABPOA_MF as i32
-        };
-        let use_read_ids = self.preserve_read_ids || needs_read_ids;
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
-        unsafe {
-            self.raw.as_mut().set_use_read_ids(use_read_ids as u8);
-        }
     }
 
     pub fn set_use_read_ids(&mut self, enabled: bool) -> &mut Self {
-        self.preserve_read_ids = enabled;
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
             self.raw.as_mut().set_use_read_ids(enabled as u8);
@@ -495,6 +506,15 @@ impl Parameters {
                 "max_n_cons must be positive to request consensus output".into(),
             ));
         }
+        if max_n_cons > 1 {
+            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
+            let raw = unsafe { self.raw.as_ref() };
+            if raw.use_read_ids() == 0 {
+                return Err(Error::InvalidInput(
+                    "multiple consensus output requires read ids; enable read ids or set max_n_cons=1".into(),
+                ));
+            }
+        }
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
             self.raw.as_mut().max_n_cons = max_n_cons;
@@ -533,6 +553,15 @@ impl Parameters {
         max_n_cons: i32,
         min_freq: f64,
     ) -> Result<&mut Self> {
+        if matches!(alg, ConsensusAlgorithm::MostFrequent) {
+            // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
+            let raw = unsafe { self.raw.as_ref() };
+            if raw.use_read_ids() == 0 {
+                return Err(Error::InvalidInput(
+                    "MostFrequent consensus requires read ids; enable read ids or use HeaviestBundle".into(),
+                ));
+            }
+        }
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
             let raw = self.raw.as_mut();
@@ -1025,7 +1054,7 @@ mod tests {
     #[test]
     fn parameters_init_and_free() {
         let mut params = Parameters::new().unwrap();
-        assert!(!params.as_mut_ptr().is_null());
+        assert!(!params.as_mut_ptr().unwrap().is_null());
     }
 
     #[test]
@@ -1134,7 +1163,7 @@ mod tests {
         params.set_zdrop(Some(10)).unwrap();
         params.set_end_bonus(Some(5)).unwrap();
         assert!(params.dirty);
-        let _ = params.as_mut_ptr();
+        let _ = params.as_mut_ptr().unwrap();
         assert!(!params.dirty);
 
         let raw = unsafe { params.raw.as_ref() };
@@ -1143,7 +1172,7 @@ mod tests {
 
         params.set_zdrop(None).unwrap();
         params.set_end_bonus(None).unwrap();
-        let _ = params.as_mut_ptr();
+        let _ = params.as_mut_ptr().unwrap();
 
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.zdrop, -1);
@@ -1241,7 +1270,7 @@ mod tests {
         assert_eq!(raw.wb, 6);
         assert!((raw.wf - 0.5).abs() < f32::EPSILON);
 
-        let _ = params.as_mut_ptr();
+        let _ = params.as_mut_ptr().unwrap();
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.gap_mode, GapMode::Affine.as_raw());
         assert_eq!(raw.use_read_ids(), 1);
@@ -1255,34 +1284,48 @@ mod tests {
     }
 
     #[test]
-    fn use_read_ids_forced_for_msa_output() {
-        let mut params = Parameters::configure().unwrap();
+    fn use_read_ids_disabled_rejects_msa_output() {
+        let mut params = Parameters::new().unwrap();
+        params.set_outputs(OutputMode::MSA);
         params.set_use_read_ids(false);
-        let _ = params.as_mut_ptr();
 
-        let raw = unsafe { params.raw.as_ref() };
-        assert_eq!(raw.out_msa(), 1);
-        assert_eq!(raw.use_read_ids(), 1);
+        let err = params.as_mut_ptr().unwrap_err();
+        assert!(matches!(err, Error::InvalidInput(_)));
     }
 
     #[test]
-    fn set_outputs_for_call_updates_use_read_ids() {
+    fn set_outputs_for_call_does_not_auto_enable_read_ids() {
         let mut params = Parameters::new().unwrap();
         params.set_outputs(OutputMode::CONSENSUS);
         params.set_use_read_ids(false);
-        let _ = params.as_mut_ptr();
+        params.as_mut_ptr().unwrap();
 
-        assert!(!params.dirty);
         let raw = unsafe { params.raw.as_ref() };
-        assert_eq!(raw.out_msa(), 0);
         assert_eq!(raw.use_read_ids(), 0);
 
         params.set_outputs_for_call(OutputMode::MSA);
-
-        assert!(!params.dirty);
         let raw = unsafe { params.raw.as_ref() };
-        assert_eq!(raw.out_msa(), 1);
-        assert_eq!(raw.use_read_ids(), 1);
+        assert_eq!(raw.use_read_ids(), 0);
+        assert!(matches!(
+            params.as_mut_ptr().unwrap_err(),
+            Error::InvalidInput(_)
+        ));
+    }
+
+    #[test]
+    fn strict_read_ids_validation_in_setters() {
+        let mut params = Parameters::new().unwrap();
+        params.set_outputs(OutputMode::CONSENSUS);
+        params.set_use_read_ids(false);
+
+        assert!(matches!(
+            params.set_max_consensus(2),
+            Err(Error::InvalidInput(_))
+        ));
+        assert!(matches!(
+            params.set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.2),
+            Err(Error::InvalidInput(_))
+        ));
     }
 
     #[test]
@@ -1328,7 +1371,7 @@ N 0 0 0 0 0
         fs::write(&path, file_contents).unwrap();
 
         params.set_score_matrix_file(&path).unwrap();
-        let _ = params.as_mut_ptr();
+        let _ = params.as_mut_ptr().unwrap();
 
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.use_score_matrix, 1);
@@ -1353,7 +1396,7 @@ N 0 0 0 0 0
             0, 0, 0, 0, 0,
         ];
         params.set_custom_matrix(5, &custom).unwrap();
-        let _ = params.as_mut_ptr();
+        let _ = params.as_mut_ptr().unwrap();
         let raw = unsafe { params.raw.as_ref() };
         let restored = unsafe { std::slice::from_raw_parts(raw.mat, custom.len()) };
         assert_eq!(restored, custom.as_slice());

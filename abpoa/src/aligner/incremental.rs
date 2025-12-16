@@ -1,11 +1,11 @@
 use super::{
-    encode_sequences, to_i32, validate_quality_weights, Aligner, RawAlignment, SequenceBatch,
+    Aligner, RawAlignment, SequenceBatch, encode_sequences, to_i32, validate_quality_weights,
 };
 use crate::encode::Alphabet;
 use crate::graph::Graph;
 use crate::params::{NodeId, OutputMode, Parameters, SentinelNode};
 use crate::result::{EncodedMsaResult, EncodedMsaView, MsaResult};
-use crate::{sys, Error, Result};
+use crate::{Error, Result, sys};
 use std::{marker::PhantomData, path::Path, ptr, ptr::NonNull};
 
 /// Node ids (exclusive) delimiting a subgraph to align against
@@ -160,18 +160,20 @@ impl Aligner {
 
     /// Ensure the graph is topologically sorted and dependent buffers are refreshed
     pub fn ensure_topological(&mut self) -> Result<()> {
+        let params_ptr = self.params.as_mut_ptr()?;
         let graph = self.graph_mut()?;
         // Safety: abPOA allocates and fills topology buffers when sorting
-        unsafe { sys::abpoa_topological_sort(graph, self.params.as_mut_ptr()) };
+        unsafe { sys::abpoa_topological_sort(graph, params_ptr) };
         Ok(())
     }
 
     /// Reset the underlying graph and DP matrices to prepare for incremental alignment
     pub fn reset(&mut self, ref_len: usize) -> Result<()> {
         let ref_len = to_i32(ref_len, "reference length exceeds i32")?;
+        let params_ptr = self.params.as_mut_ptr()?;
         // Safety: `raw` and `params` are live pointers; abPOA expects `abpoa_reset` before
         // running incremental alignment
-        unsafe { sys::abpoa_reset(self.as_mut_ptr(), self.params.as_mut_ptr(), ref_len) };
+        unsafe { sys::abpoa_reset(self.as_mut_ptr(), params_ptr, ref_len) };
         // `abpoa_reset` clears the graph; read-id tracking starts fresh.
         self.graph_tracks_read_ids = true;
         Ok(())
@@ -182,20 +184,24 @@ impl Aligner {
         let empty_before = self.graph_is_empty();
         // Safety: abPOA requires `incr_fn` to be set to a valid path; return an error if the
         // caller forgot to configure it
-        let params_ptr = self.params.as_mut_ptr();
-        let raw_params = unsafe { params_ptr.as_ref() }
-            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
-        if raw_params.incr_fn.is_null() {
-            return Err(Error::InvalidInput(
-                "set an incremental graph path before calling restore_graph".into(),
-            ));
+        let params_ptr = self.params.as_mut_ptr()?;
+        {
+            let raw_params = unsafe { params_ptr.as_ref() }
+                .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
+            if raw_params.incr_fn.is_null() {
+                return Err(Error::InvalidInput(
+                    "set an incremental graph path before calling restore_graph".into(),
+                ));
+            }
         }
 
         let restored = unsafe { sys::abpoa_restore_graph(self.as_mut_ptr(), params_ptr) };
         if restored.is_null() {
             return Err(Error::NullPointer("failed to restore graph from file"));
         }
-        let uses_read_ids = raw_params.use_read_ids() != 0;
+        let uses_read_ids = unsafe { params_ptr.as_ref() }
+            .map(|raw| raw.use_read_ids() != 0)
+            .unwrap_or(true);
         if empty_before {
             self.graph_tracks_read_ids = uses_read_ids;
         } else if !uses_read_ids {
@@ -214,10 +220,11 @@ impl Aligner {
         let mut exc_end = 0;
 
         // Safety: aligner and parameters are live; abpoa will write the two exclusive node ids
+        let params_ptr = self.params.as_mut_ptr()?;
         unsafe {
             sys::abpoa_subgraph_nodes(
                 self.as_mut_ptr(),
-                self.params.as_mut_ptr(),
+                params_ptr,
                 include_begin.0,
                 include_end.0,
                 &mut exc_beg,
@@ -241,10 +248,11 @@ impl Aligner {
 
         // abPOA returns -1 when the graph is still empty; allow that case so the first sequence
         // can be added without a pre-existing graph
+        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_align_sequence_to_graph(
                 self.as_mut_ptr(),
-                self.params.as_mut_ptr(),
+                params_ptr,
                 encoded_seq.as_ptr() as *mut u8,
                 qlen,
                 res.as_mut_ptr(),
@@ -276,10 +284,11 @@ impl Aligner {
         let mut res = RawAlignment::new();
         let (beg, end) = range.as_raw();
 
+        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_align_sequence_to_subgraph(
                 self.as_mut_ptr(),
-                self.params.as_mut_ptr(),
+                params_ptr,
                 beg,
                 end,
                 encoded_seq.as_ptr() as *mut u8,
@@ -340,7 +349,7 @@ impl Aligner {
             .map(|w| w.as_ptr() as *mut i32)
             .unwrap_or(ptr::null_mut());
 
-        let params_ptr = self.params.as_mut_ptr();
+        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_add_graph_alignment(
                 self.as_mut_ptr(),
@@ -401,11 +410,16 @@ impl Aligner {
         read_id_offset: i32,
         total_reads: i32,
     ) -> Result<()> {
-        let raw_params = unsafe { self.params.as_mut_ptr().as_ref() }
-            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
         let alphabet = self.alphabet();
-        let amb_strand = raw_params.amb_strand() != 0 && alphabet == Alphabet::Dna;
-        let max_mat = raw_params.max_mat;
+        let (amb_strand, max_mat) = {
+            let params_ptr = self.params.as_mut_ptr()?;
+            let raw_params = unsafe { params_ptr.as_ref() }
+                .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
+            (
+                raw_params.amb_strand() != 0 && alphabet == Alphabet::Dna,
+                raw_params.max_mat,
+            )
+        };
 
         let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };
         if abs_ptr.is_null() {
@@ -545,7 +559,7 @@ impl Aligner {
         self.ensure_sequence_count(total_reads)?;
         let (beg, end) = range.as_raw();
 
-        let params_ptr = self.params.as_mut_ptr();
+        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_add_subgraph_alignment(
                 self.as_mut_ptr(),
@@ -660,7 +674,6 @@ impl Aligner {
         outputs: OutputMode,
         convert: impl FnOnce(*const sys::abpoa_cons_t, Alphabet) -> T,
     ) -> Result<T> {
-        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         if self.graph_is_empty() {
             let alphabet = self.alphabet();
@@ -678,31 +691,31 @@ impl Aligner {
                     .into(),
             ));
         }
-        if outputs.contains(OutputMode::CONSENSUS)
-            && self.params.max_consensus() > 1
-            && !self.graph_tracks_read_ids
-        {
-            return Err(Error::InvalidInput(
-                "cannot generate multiple consensus sequences from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
-                    .into(),
-            ));
-        }
 
         let alphabet = self.alphabet();
         self.params.set_outputs_for_call(outputs);
 
-        let needs_msa_rank = outputs.contains(OutputMode::MSA)
-            || (outputs.contains(OutputMode::CONSENSUS) && self.consensus_needs_msa_rank()?);
+        let consensus_needs_msa_rank =
+            outputs.contains(OutputMode::CONSENSUS) && self.consensus_needs_msa_rank()?;
+        if consensus_needs_msa_rank && !self.graph_tracks_read_ids {
+            return Err(Error::InvalidInput(
+                "cannot generate clustered consensus output (multiple consensus sequences or MostFrequent consensus) from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
+                    .into(),
+            ));
+        }
+
+        let needs_msa_rank = outputs.contains(OutputMode::MSA) || consensus_needs_msa_rank;
         if needs_msa_rank {
             self.ensure_msa_rank_buffer()?;
         }
 
+        let params_ptr = self.params.as_mut_ptr()?;
         if outputs.contains(OutputMode::MSA) {
             // Safety: aligner and parameters are live; abPOA will populate `abc` with MSA/consensus
-            unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+            unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), params_ptr) };
         } else {
             // Safety: aligner and parameters are live; abPOA will populate `abc` with consensus
-            unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+            unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), params_ptr) };
         }
 
         let abc = unsafe { (*self.as_ptr()).abc };

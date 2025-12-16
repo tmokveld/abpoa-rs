@@ -114,14 +114,16 @@ abPOA can optionally track per-read membership in the graph (stored as per-edge 
 required for some outputs and algorithms, but can be disabled to save memory if you only need a single
 consensus.
 
-Important quirks (mirroring upstream behavior):
+Strict rules enforced by the Rust wrapper:
 
-- `OutputMode::MSA`, GFA output, `max_consensus > 1` (multi-consensus), and `ConsensusAlgorithm::MostFrequent`
-  **force `use_read_ids = true`** during parameter finalization. (`Parameters::set_use_read_ids(false)` is a
-  “don’t preserve read ids unless required” hint, not a hard override.)
-- If you build a graph with read ids disabled, the wrapper will **reject** MSA, GFA, and multi-consensus
-  generation from that graph with a clear `InvalidInput` error. You must rebuild the graph with read ids
-  enabled from the start.
+- Disabling `use_read_ids` is a hard opt-out: the wrapper will return `InvalidInput` if you request any of:
+  - `OutputMode::MSA`
+  - GFA output (`Aligner::write_gfa*`)
+  - `max_consensus > 1` (multi-consensus)
+  - `ConsensusAlgorithm::MostFrequent`
+- Even if parameters enable read ids, if the current graph was built without them, the wrapper will **reject**
+  MSA/GFA/multi-consensus/MostFrequent consensus generation with a clear `InvalidInput` error. You must rebuild
+  the graph with read ids enabled from the start.
 - Upstream allocates some output-related buffers (notably `node_id_to_msa_rank`) based on the requested
   outputs at graph-build time. The wrapper allocates/resizes these lazily, so it is safe to build a
   consensus-only graph **with read ids enabled** and later request MSA or multi-consensus output.
@@ -131,11 +133,12 @@ Important quirks (mirroring upstream behavior):
 Memory-saving pattern (single consensus only):
 
 ```rust
-use abpoa::{Aligner, ConsensusAlgorithm, Parameters, SequenceBatch};
+use abpoa::{Aligner, ConsensusAlgorithm, OutputMode, Parameters, SequenceBatch};
 
 let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
 
 let mut params = Parameters::configure()?;
+params.set_outputs(OutputMode::CONSENSUS);
 params
     .set_use_read_ids(false) // allow read-id-less graphs
     .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?; // keep max_consensus = 1

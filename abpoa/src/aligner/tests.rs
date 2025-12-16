@@ -36,10 +36,11 @@ fn from_graph_file_restores_graph_and_toggle_read_ids() {
         !graph.is_empty(),
         "restored graph should include aligned nodes"
     );
-    let raw_params = unsafe { restored.params_mut().as_mut_ptr().as_ref() }.unwrap();
+    let params_ptr = restored.params_mut().as_mut_ptr().unwrap();
+    let raw_params = unsafe { params_ptr.as_ref() }.unwrap();
     assert!(
         raw_params.use_read_ids() == 0,
-        "preserve_read_ids flag should propagate to parameters"
+        "use_read_ids flag should propagate to parameters"
     );
 
     std::fs::remove_file(&path).unwrap_or_default();
@@ -290,7 +291,7 @@ fn graph_alignment_round_trip() {
 
     let params_ptr = {
         let params = aligner.params_mut();
-        params.as_mut_ptr()
+        params.as_mut_ptr().unwrap()
     };
     unsafe { sys::abpoa_generate_consensus(aligner.as_mut_ptr(), params_ptr) };
     let abc = unsafe { (*aligner.as_ptr()).abc };
@@ -662,7 +663,19 @@ fn read_id_less_graph_rejects_msa_gfa_and_multi_consensus() {
 
     {
         let params = aligner.params_mut();
+        params.set_use_read_ids(true);
         params.set_max_consensus(2).unwrap();
+    }
+    assert!(matches!(
+        aligner.finalize_msa(OutputMode::CONSENSUS),
+        Err(Error::InvalidInput(_))
+    ));
+
+    {
+        let params = aligner.params_mut();
+        params
+            .set_consensus(crate::ConsensusAlgorithm::MostFrequent, 1, 0.2)
+            .unwrap();
     }
     assert!(matches!(
         aligner.finalize_msa(OutputMode::CONSENSUS),

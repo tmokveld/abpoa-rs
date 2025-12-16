@@ -23,22 +23,25 @@ impl Aligner {
         if self.graph_is_empty() {
             return Ok(());
         }
-        if self.params.max_consensus() > 1 && !self.graph_tracks_read_ids {
-            return Err(Error::InvalidInput(
-                "cannot write multiple consensus sequences from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
-                    .into(),
-            ));
-        }
 
-        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
         self.params.set_outputs_for_call(OutputMode::CONSENSUS);
-        if self.consensus_needs_msa_rank()? {
+        let params_ptr = self.params.as_mut_ptr()?;
+        let consensus_needs_msa_rank = unsafe { params_ptr.as_ref() }
+            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))
+            .map(|raw| raw.max_n_cons > 1 || raw.cons_algrm == sys::ABPOA_MF as i32)?;
+        if consensus_needs_msa_rank && !self.graph_tracks_read_ids {
+            return Err(Error::InvalidInput(
+                "cannot write clustered consensus output (multiple consensus sequences or MostFrequent consensus) from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
+                    .into(),
+            ));
+        }
+        if consensus_needs_msa_rank {
             self.ensure_msa_rank_buffer()?;
         }
 
-        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), params_ptr) };
         let abc = unsafe { (*self.as_ptr()).abc };
         if abc.is_null() {
             return Err(Error::NullPointer(
@@ -47,7 +50,7 @@ impl Aligner {
         }
 
         let result = unsafe { MsaResult::from_raw(abc, alphabet) };
-        let batch_index = unsafe { self.params.as_mut_ptr().as_ref() }
+        let batch_index = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?
             .batch_index;
 
@@ -78,22 +81,25 @@ impl Aligner {
         if self.graph_is_empty() {
             return Ok(());
         }
-        if self.params.max_consensus() > 1 && !self.graph_tracks_read_ids {
-            return Err(Error::InvalidInput(
-                "cannot write multiple consensus sequences from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
-                    .into(),
-            ));
-        }
 
-        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
         self.params.set_outputs_for_call(OutputMode::CONSENSUS);
-        if self.consensus_needs_msa_rank()? {
+        let params_ptr = self.params.as_mut_ptr()?;
+        let consensus_needs_msa_rank = unsafe { params_ptr.as_ref() }
+            .ok_or(Error::NullPointer("abpoa parameters pointer was null"))
+            .map(|raw| raw.max_n_cons > 1 || raw.cons_algrm == sys::ABPOA_MF as i32)?;
+        if consensus_needs_msa_rank && !self.graph_tracks_read_ids {
+            return Err(Error::InvalidInput(
+                "cannot write clustered consensus output (multiple consensus sequences or MostFrequent consensus) from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
+                    .into(),
+            ));
+        }
+        if consensus_needs_msa_rank {
             self.ensure_msa_rank_buffer()?;
         }
 
-        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+        unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), params_ptr) };
         let abc = unsafe { (*self.as_ptr()).abc };
         if abc.is_null() {
             return Err(Error::NullPointer(
@@ -102,7 +108,7 @@ impl Aligner {
         }
 
         let result = unsafe { MsaResult::from_raw(abc, alphabet) };
-        let batch_index = unsafe { self.params.as_mut_ptr().as_ref() }
+        let batch_index = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?
             .batch_index;
 
@@ -164,7 +170,6 @@ impl Aligner {
             ));
         }
 
-        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         self.params
             .set_outputs_for_call(OutputMode::CONSENSUS | OutputMode::MSA);
@@ -175,7 +180,8 @@ impl Aligner {
             Alphabet::AminoAcid => decode_aa,
         };
 
-        unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+        let params_ptr = self.params.as_mut_ptr()?;
+        unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), params_ptr) };
         let abc_ptr = unsafe { (*self.as_ptr()).abc };
         let abc = unsafe { abc_ptr.as_ref() }.ok_or(Error::NullPointer(
             "abpoa returned a null consensus pointer",
@@ -244,7 +250,6 @@ impl Aligner {
             ));
         }
 
-        crate::runtime::ensure_output_tables();
         self.reset_cached_outputs()?;
         let abs_ptr = unsafe { (*self.as_ptr()).abs };
         let has_consensus = has_consensus_sequence(abs_ptr)?;
@@ -258,6 +263,7 @@ impl Aligner {
             self.ensure_msa_rank_buffer()?;
         }
         self.params.set_outputs_for_call(desired_outputs);
+        let params_ptr = self.params.as_mut_ptr()?;
 
         let file = OpenOptions::new()
             .read(true)
@@ -281,11 +287,7 @@ impl Aligner {
 
         let write_result = {
             unsafe {
-                sys::abpoa_generate_gfa(
-                    self.as_mut_ptr(),
-                    self.params.as_mut_ptr(),
-                    fp as *mut sys::FILE,
-                );
+                sys::abpoa_generate_gfa(self.as_mut_ptr(), params_ptr, fp as *mut sys::FILE);
                 libc::fflush(fp);
             }
             Ok(())
@@ -427,22 +429,23 @@ impl Aligner {
                     Error::InvalidInput("graph dump path cannot contain null bytes".into())
                 })?;
 
-                let raw = unsafe { self.params.as_mut_ptr().as_mut() }
-                    .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
-                let previous = raw.out_pog;
-                // Safety: `c_path` is a valid C string; `strdup` allocates an owned copy
-                raw.out_pog = unsafe { libc::strdup(c_path.as_ptr()) };
-                if raw.out_pog.is_null() {
-                    raw.out_pog = previous;
+                let params_ptr = self.params.as_mut_ptr()?;
+                let previous = unsafe { (*params_ptr).out_pog };
+                // Safety: `c_path` is a valid C string; `strdup` allocates an owned copy.
+                let new = unsafe { libc::strdup(c_path.as_ptr()) };
+                if new.is_null() {
                     return Err(Error::NullPointer("failed to store graph dump path"));
+                }
+                unsafe {
+                    (*params_ptr).out_pog = new;
                 }
 
                 // Safety: `self`/`self.params` are valid for the duration of the call
-                unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), self.params.as_mut_ptr()) };
+                unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), params_ptr) };
 
                 unsafe {
-                    libc::free(raw.out_pog as *mut libc::c_void);
-                    raw.out_pog = previous;
+                    libc::free((*params_ptr).out_pog as *mut libc::c_void);
+                    (*params_ptr).out_pog = previous;
                 }
 
                 Ok(())

@@ -218,7 +218,7 @@ impl Aligner {
     }
 
     fn consensus_needs_msa_rank(&mut self) -> Result<bool> {
-        let params_ptr = self.params.as_mut_ptr();
+        let params_ptr = self.params.as_mut_ptr()?;
         let raw = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?;
         Ok(raw.max_n_cons > 1 || raw.cons_algrm == sys::ABPOA_MF as i32)
