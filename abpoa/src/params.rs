@@ -148,10 +148,10 @@ impl Parameters {
         if current_m != m {
             self.resize_matrix(m)?;
         }
-        if let Some(custom) = &self.custom_matrix
-            && custom.m != m
-        {
-            self.custom_matrix = None;
+        if let Some(custom) = &self.custom_matrix {
+            if custom.m != m {
+                self.custom_matrix = None;
+            }
         }
 
         self.alphabet = alphabet;

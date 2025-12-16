@@ -651,12 +651,12 @@ impl Aligner {
                 format!("read_id {read_id} out of range 0..{total_reads}").into(),
             ));
         }
-        if let Some(w) = weights
-            && w.len() != encoded_seq.len()
-        {
-            return Err(Error::InvalidInput(
-                "quality weights must match sequence length".into(),
-            ));
+        if let Some(w) = weights {
+            if w.len() != encoded_seq.len() {
+                return Err(Error::InvalidInput(
+                    "quality weights must match sequence length".into(),
+                ));
+            }
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
         self.ensure_sequence_count(total_reads)?;
@@ -827,11 +827,13 @@ impl Aligner {
                 self.add_alignment(seq_to_add, &alignment, read_id, total_reads)?;
             }
 
-            if is_rc && let Some(is_rc_ptr) = is_rc_ptr {
-                // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
-                // is within the `total_reads` bound ensured by `ensure_sequence_count`
-                unsafe {
-                    *is_rc_ptr.add(read_id as usize) = 1;
+            if is_rc {
+                if let Some(is_rc_ptr) = is_rc_ptr {
+                    // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
+                    // is within the `total_reads` bound ensured by `ensure_sequence_count`
+                    unsafe {
+                        *is_rc_ptr.add(read_id as usize) = 1;
+                    }
                 }
             }
         }
@@ -1562,12 +1564,12 @@ impl Aligner {
     ) -> Result<()> {
         let seqs = batch.sequences();
         let names = batch.names();
-        if let Some(names) = names
-            && names.len() != seqs.len()
-        {
-            return Err(Error::InvalidInput(
-                "names length must match sequence count".into(),
-            ));
+        if let Some(names) = names {
+            if names.len() != seqs.len() {
+                return Err(Error::InvalidInput(
+                    "names length must match sequence count".into(),
+                ));
+            }
         }
 
         let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };

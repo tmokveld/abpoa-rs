@@ -2,7 +2,22 @@
 
 Rust bindings and wrapper for the [abPOA](https://github.com/yangao07/abPOA) partial order aligner, not related to: https://github.com/broadinstitute/abpoa-rs.
 
-The wrapper lives in the `abpoa` crate, the raw FFI bindings are available as `abpoa::sys`.
+The wrapper lives in the `abpoa` crate, the raw FFI bindings are available as `abpoa::sys` (or via
+the `abpoa-sys` crate directly).
+
+## Platform support
+
+`abpoa` currently supports Unix-like targets only; upstream abPOA depends on POSIX APIs.
+
+Building requires a C toolchain plus `clang`/`libclang` (for `bindgen`). The build links against
+`zlib`, `libm`, and `pthread`.
+
+## Build / test
+
+```sh
+cargo build --workspace
+cargo test --workspace
+```
 
 ## Quick start
 
@@ -132,7 +147,7 @@ Look into the `abpoa/examples/` directory to see examples on how to use the API:
 - `graph_io.rs`: exporting MSA/GFA, restoring graphs, read names, and reverse‑complement aware MSA (`set_ambiguous_strand`).
 - `simulate_reads.rs`: generating synthetic reads from two consensuses and recovering both consensus sequences.
 
-The wrapper exposes a more than the examples show, feel free to explore.
+The wrapper exposes more than the examples show, feel free to explore.
 
 ## Disclaimer
 
