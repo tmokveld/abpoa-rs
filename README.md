@@ -69,8 +69,9 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
   verbosity, etc.), nearly all setters are chainable.
 - `SequenceBatch`: a view over input sequences plus optional read names and quality weights.
 - `OutputMode`: choose which outputs to compute (`OutputMode::CONSENSUS`, `OutputMode::MSA`, or both).
-- `MsaResult` / `EncodedMsaResult`: alignment output. `msa` holds per-read aligned rows; `clusters`
+- `MsaResult` / `EncodedMsaResult`: owned alignment output. `msa` holds per-read aligned rows; `clusters`
   holds one or more consensus sequences with coverage/read-id metadata.
+- `EncodedMsaView`: zero-copy output view borrowing from an `Aligner`.
 - `Graph`: read-only view of the internal POA graph for inspection or subgraph workflows.
 - `encode` helpers (`encode_dna`, `encode_aa`) and `Alphabet`: use these when working with encoded APIs
   like `msa_encoded` or `align_sequence_raw`.
@@ -107,6 +108,58 @@ abPOA exposes two different execution paths, and the wrapper mirrors that split:
 **WARNING:** Because the incremental APIs never go through `abpoa_msa`, they **do not** use minimizer seeding
 or guide-tree partitioning even if those parameters are set.
 
+## Read IDs (`use_read_ids`) and output constraints
+
+abPOA can optionally track per-read membership in the graph (stored as per-edge bitsets of read ids). This is
+required for some outputs and algorithms, but can be disabled to save memory if you only need a single
+consensus.
+
+Important quirks (mirroring upstream behavior):
+
+- `OutputMode::MSA`, GFA output, `max_consensus > 1` (multi-consensus), and `ConsensusAlgorithm::MostFrequent`
+  **force `use_read_ids = true`** during parameter finalization. (`Parameters::set_use_read_ids(false)` is a
+  “don’t preserve read ids unless required” hint, not a hard override.)
+- If you build a graph with read ids disabled, the wrapper will **reject** MSA, GFA, and multi-consensus
+  generation from that graph with a clear `InvalidInput` error. You must rebuild the graph with read ids
+  enabled from the start.
+- Upstream allocates some output-related buffers (notably `node_id_to_msa_rank`) based on the requested
+  outputs at graph-build time. The wrapper allocates/resizes these lazily, so it is safe to build a
+  consensus-only graph **with read ids enabled** and later request MSA or multi-consensus output.
+- Changing `use_read_ids` (or `max_consensus`) via `aligner.params_mut()` does **not** retroactively add read
+  ids to an already-built graph.
+
+Memory-saving pattern (single consensus only):
+
+```rust
+use abpoa::{Aligner, ConsensusAlgorithm, Parameters, SequenceBatch};
+
+let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
+
+let mut params = Parameters::configure()?;
+params
+    .set_use_read_ids(false) // allow read-id-less graphs
+    .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?; // keep max_consensus = 1
+
+let mut aligner = Aligner::with_params(params)?;
+aligner.msa_in_place(SequenceBatch::from_sequences(&seqs))?;
+aligner.write_consensus_fasta(&mut std::io::stdout())?;
+
+// These will error because the graph was built without read ids:
+assert!(aligner.write_msa_fasta(&mut Vec::new()).is_err());
+assert!(aligner.write_gfa(&mut Vec::new()).is_err());
+```
+
+## Zero-copy output views (encoded)
+
+If you want to avoid allocating/copying the MSA/consensus output, use the encoded view APIs:
+
+- `Aligner::msa_view_encoded(...) -> EncodedMsaView<'_>`
+- `Aligner::finalize_msa_view_encoded(...) -> EncodedMsaView<'_>`
+
+`EncodedMsaView` borrows abPOA’s internal output buffers owned by the aligner; it is invalidated by any
+subsequent call that regenerates or clears output (e.g. another `msa*`/`finalize_msa*`, `reset`, or graph
+restoration). The borrow checker prevents mutating the aligner while a view exists.
+
 ## Seeding, guide trees, and `progressive_poa`
 
 These settings only affect the one-shot path (`msa` / `msa_encoded`) and only when
@@ -139,6 +192,7 @@ larger `k/w` values.
 Look into the `abpoa/examples/` directory to see examples on how to use the API:
 
 - `example_c.rs`: end-to-end one-shot MSA with minimizer seeding, per-base quality weights, and FASTA/GFA outputs.
+- `encoded_views.rs`: zero-copy encoded output views (`EncodedMsaView`, `EncodedMsaRows`, `EncodedClusterView`).
 - `oneshot_seeding.rs`: when seeding/guide trees do (and do not) apply, compares one-shot vs incremental paths.
 - `multi_thread_aligners.rs`: using one aligner per thread and validating thread safety under TSAN.
 - `incremental_msa.rs`: streaming/incremental graph growth (`msa_in_place`, `add_sequences`, `finalize_msa`).

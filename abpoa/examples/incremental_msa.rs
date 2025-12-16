@@ -14,6 +14,7 @@ fn main() -> Result<()> {
         b"CGATCGATCGATCGATGCATGCATCGATGCATCGATCGATGCATGCAT",
         b"CGATCGATCGATCGATGCATGCATCGATGCATCGATCGATGCATGCAT",
         b"CGATCGATCGATCGATGCATGCATCGATGCATCGATCGATGCATGCAT",
+        b"CGATCGATCGATGGGGGGGGGGGGGGGGGGGCGATGCATGCATCGATGCATCGATCGATGCATGCAT",
     ];
     let first_part = 5;
     let second_part = 3;
@@ -48,6 +49,14 @@ fn main() -> Result<()> {
     for seq in seqs[first_part..first_part + second_part].iter() {
         aligner.add_sequences(SequenceBatch::from_sequences(&[seq]))?;
     }
+
+    let secondary = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    println!("Secondary MSA (after appending the second part of {second_part} sequences):");
+    println!("\nMSA rows:");
+    for row in &secondary.msa {
+        println!("  {}", row);
+    }
+
     let graph = aligner.graph()?;
     println!(
         "After appending the second part, existing graph has {} sequences, {} nodes\n",

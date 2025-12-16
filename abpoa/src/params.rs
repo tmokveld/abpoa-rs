@@ -482,6 +482,12 @@ impl Parameters {
         output
     }
 
+    /// Maximum number of consensus sequences configured for this parameter set
+    pub fn max_consensus(&self) -> i32 {
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        unsafe { self.raw.as_ref() }.max_n_cons
+    }
+
     /// Set the maximum number of consensus sequences to emit
     pub fn set_max_consensus(&mut self, max_n_cons: i32) -> Result<&mut Self> {
         if max_n_cons < 1 {

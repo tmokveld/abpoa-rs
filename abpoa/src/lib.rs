@@ -48,7 +48,10 @@ pub use crate::params::{
     SentinelNode, Verbosity,
 };
 #[cfg(unix)]
-pub use crate::result::{Alignment, Cluster, EncodedCluster, EncodedMsaResult, MsaResult};
+pub use crate::result::{
+    Alignment, Cluster, EncodedCluster, EncodedClusterView, EncodedClusters, EncodedMsaResult,
+    EncodedMsaRows, EncodedMsaView, MsaResult,
+};
 
 #[cfg(unix)]
 #[derive(Debug, thiserror::Error)]
