@@ -12,6 +12,16 @@ the `abpoa-ffi-sys` crate directly; `abpoa_ffi_sys` in Rust code).
 Building requires a C toolchain plus `clang`/`libclang` (for `bindgen`). The build links against
 `zlib`, `libm`, and `pthread`.
 
+If you hit build errors about missing `zlib.h` or `-lz`, set `ZLIB_DIR` to a zlib installation
+**prefix** (not the `lib/` directory). Expected layout:
+
+- `"$ZLIB_DIR/include/zlib.h"`
+- `"$ZLIB_DIR/lib/libz.*"` (or `"$ZLIB_DIR/lib64/libz.*"`)
+
+```sh
+export ZLIB_DIR=/path/to/zlib/prefix
+```
+
 ## Build / test
 
 ```sh

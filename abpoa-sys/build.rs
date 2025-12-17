@@ -7,6 +7,7 @@ use glob::glob;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=ZLIB_DIR");
 
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -21,7 +22,13 @@ fn main() {
     let include_dir = abpoa_dir.join("include");
     let src_dir = abpoa_dir.join("src");
 
-    let include_paths = vec![include_dir.clone()];
+    let zlib_dir = env::var_os("ZLIB_DIR").map(PathBuf::from);
+    let zlib_include_dir = zlib_dir.as_ref().map(|d| d.join("include"));
+
+    let mut include_paths = vec![include_dir.clone()];
+    if let Some(p) = &zlib_include_dir {
+        include_paths.push(p.clone());
+    }
 
     let use_simde = !is_x86;
     assert_submodule_present(&abpoa_dir, &include_dir, &src_dir, use_simde);
@@ -46,6 +53,9 @@ fn main() {
     base_build.warnings(false);
     base_build.include(&include_dir);
     base_build.include(&src_dir);
+    if let Some(p) = &zlib_include_dir {
+        base_build.include(p);
+    }
     if is_linux {
         base_build.define("_GNU_SOURCE", None);
     }
@@ -110,6 +120,9 @@ fn main() {
         align_build.warnings(false);
         align_build.include(&include_dir);
         align_build.include(&src_dir);
+        if let Some(p) = &zlib_include_dir {
+            align_build.include(p);
+        }
         if is_linux {
             align_build.define("_GNU_SOURCE", None);
         }
@@ -135,8 +148,10 @@ fn main() {
         align_build.compile("abpoa_align_simd");
     } else {
         // For x86/x86_64, also build the runtime-dispatch variants and dispatcher to match upstream
-        build_dispatch_variants(&include_dir, &src_dir, is_linux);
+        build_dispatch_variants(&include_dir, &src_dir, zlib_include_dir.as_ref(), is_linux);
     }
+
+    emit_zlib_link_search_paths(zlib_dir.as_ref());
 
     // abPOA depends on zlib and libm; pthreads is part of libSystem on macOS
     if target_os != "windows" {
@@ -150,6 +165,18 @@ fn main() {
     let header = find_header(&include_paths).unwrap_or_else(|| PathBuf::from("abpoa.h"));
 
     generate_bindings(&header, &include_paths, &clang_args, &target_triple);
+}
+
+fn emit_zlib_link_search_paths(zlib_dir: Option<&PathBuf>) {
+    let Some(zlib_dir) = zlib_dir else {
+        return;
+    };
+    for sub in ["lib", "lib64"] {
+        let d = zlib_dir.join(sub);
+        if d.exists() {
+            println!("cargo:rustc-link-search=native={}", d.display());
+        }
+    }
 }
 
 fn assert_submodule_present(abpoa_dir: &Path, include_dir: &Path, src_dir: &Path, use_simde: bool) {
@@ -177,7 +204,12 @@ fn find_header(include_paths: &[PathBuf]) -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf, is_linux: bool) {
+fn build_dispatch_variants(
+    include_dir: &PathBuf,
+    src_dir: &PathBuf,
+    zlib_include_dir: Option<&PathBuf>,
+    is_linux: bool,
+) {
     // Dispatcher (CPUID-based)
     let mut dispatch = cc::Build::new();
     dispatch
@@ -191,6 +223,9 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf, is_linux: b
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-sign-compare")
         .file(src_dir.join("abpoa_dispatch_simd.c"));
+    if let Some(p) = zlib_include_dir {
+        dispatch.include(p);
+    }
     if is_linux {
         dispatch.define("_GNU_SOURCE", None);
     }
@@ -208,6 +243,9 @@ fn build_dispatch_variants(include_dir: &PathBuf, src_dir: &PathBuf, is_linux: b
             .flag_if_supported("-Wno-misleading-indentation")
             .flag_if_supported("-Wno-unused-parameter")
             .flag_if_supported("-Wno-sign-compare");
+        if let Some(p) = zlib_include_dir {
+            b.include(p);
+        }
         if is_linux {
             b.define("_GNU_SOURCE", None);
         }
