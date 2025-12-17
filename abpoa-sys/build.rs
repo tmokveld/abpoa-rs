@@ -16,11 +16,15 @@ fn main() {
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let abpoa_dir = manifest_dir.join("abPOA");
+    println!("cargo:rerun-if-changed={}", abpoa_dir.display());
 
     let include_dir = abpoa_dir.join("include");
     let src_dir = abpoa_dir.join("src");
 
     let include_paths = vec![include_dir.clone()];
+
+    let use_simde = !is_x86;
+    assert_submodule_present(&abpoa_dir, &include_dir, &src_dir, use_simde);
 
     // Rerun when any vendored source/header files change
     let glob_patterns = [
@@ -61,7 +65,6 @@ fn main() {
     if is_linux {
         clang_args.push("-D_GNU_SOURCE".into());
     }
-    let use_simde = !is_x86;
     if use_simde {
         base_build.define("USE_SIMDE", None);
         base_build.define("SIMDE_ENABLE_NATIVE_ALIASES", None);
@@ -147,6 +150,24 @@ fn main() {
     let header = find_header(&include_paths).unwrap_or_else(|| PathBuf::from("abpoa.h"));
 
     generate_bindings(&header, &include_paths, &clang_args, &target_triple);
+}
+
+fn assert_submodule_present(abpoa_dir: &Path, include_dir: &Path, src_dir: &Path, use_simde: bool) {
+    let expected_header = include_dir.join("abpoa.h");
+    let expected_source = src_dir.join("abpoa_align.c");
+    if !expected_header.exists() || !expected_source.exists() {
+        panic!(
+            "Missing abPOA submodule at {}. Run: git submodule update --init --recursive",
+            abpoa_dir.display()
+        );
+    }
+
+    if use_simde && !include_dir.join("simde").exists() {
+        panic!(
+            "Missing SIMDe submodule at {}. Run: git submodule update --init --recursive",
+            include_dir.join("simde").display()
+        );
+    }
 }
 
 fn find_header(include_paths: &[PathBuf]) -> Option<PathBuf> {
