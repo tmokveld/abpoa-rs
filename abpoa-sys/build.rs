@@ -20,7 +20,7 @@ fn main() {
     let include_dir = abpoa_dir.join("include");
     let src_dir = abpoa_dir.join("src");
 
-    let mut include_paths = vec![include_dir.clone()];
+    let include_paths = vec![include_dir.clone()];
 
     // Rerun when any vendored source/header files change
     let glob_patterns = [
@@ -37,12 +37,6 @@ fn main() {
             println!("cargo:rerun-if-changed={}", path.display());
         }
     }
-
-    println!(
-        "cargo:rerun-if-changed={}",
-        include_dir.join("abpoa.h").display()
-    );
-    println!("cargo:rerun-if-changed={}", src_dir.display());
 
     let mut base_build = cc::Build::new();
     base_build.warnings(false);
@@ -150,7 +144,6 @@ fn main() {
         println!("cargo:rustc-link-lib=z");
     }
 
-    include_paths.push(include_dir);
     let header = find_header(&include_paths).unwrap_or_else(|| PathBuf::from("abpoa.h"));
 
     generate_bindings(&header, &include_paths, &clang_args, &target_triple);
