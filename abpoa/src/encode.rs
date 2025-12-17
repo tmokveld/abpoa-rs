@@ -13,7 +13,10 @@ pub fn encode_dna(seq: &[u8]) -> Vec<u8> {
     seq.iter().copied().map(encode_dna_base).collect()
 }
 
-/// Decode abPOA's DNA integer alphabet back into bases using `ab_nt256_table`
+/// Decode abPOA's DNA integer alphabet back into bases (`A/C/G/T/N`).
+///
+/// abPOA uses `5` (and sometimes `27`) as a gap sentinel in MSA output; these codes are rendered
+/// as `'-'`.
 pub fn decode_dna(codes: &[u8]) -> String {
     codes.iter().map(|&c| decode_dna_code(c)).collect()
 }
@@ -24,7 +27,9 @@ pub fn encode_aa(seq: &[u8]) -> Vec<u8> {
     seq.iter().copied().map(encode_aa_residue).collect()
 }
 
-/// Decode abPOA's amino acid alphabet back into residue letters using `ab_aa256_table`
+/// Decode abPOA's amino acid alphabet back into residue letters.
+///
+/// abPOA uses `27` as a gap sentinel in RC-MSA output; this code is rendered as `'-'`.
 pub fn decode_aa(codes: &[u8]) -> String {
     codes.iter().map(|&c| decode_aa_code(c)).collect()
 }

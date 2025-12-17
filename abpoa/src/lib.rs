@@ -55,6 +55,7 @@ pub use crate::result::{
 
 #[cfg(unix)]
 #[derive(Debug, thiserror::Error)]
+/// Error type returned by `abpoa`'s safe APIs.
 pub enum Error {
     #[error("abPOA call {func} failed with code {code}")]
     Abpoa { func: &'static str, code: i32 },
@@ -70,6 +71,7 @@ pub enum Error {
 }
 
 #[cfg(unix)]
+/// Convenience alias for results returned by this crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Shared view of abPOA's precomputed integer log2 table for 16-bit values

@@ -238,6 +238,14 @@ impl Parameters {
         }
     }
 
+    /// Enable or disable tracking read ids in the underlying graph
+    ///
+    /// Read ids are required for:
+    /// - MSA output and GFA output
+    /// - consensus clustering (`max_n_cons > 1` or [`ConsensusAlgorithm::MostFrequent`])
+    ///
+    /// If read ids are disabled while requesting any of the above, the next FFI call will fail
+    /// with [`Error::InvalidInput`]
     pub fn set_use_read_ids(&mut self, enabled: bool) -> &mut Self {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
@@ -484,6 +492,7 @@ impl Parameters {
         previous
     }
 
+    /// Current configured outputs
     pub fn outputs(&self) -> OutputMode {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         let raw = unsafe { self.raw.as_ref() };
@@ -765,15 +774,21 @@ fn alphabet_size(alphabet: Alphabet) -> i32 {
     }
 }
 
+/// Verbosity level for abPOA's internal logging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
+    /// No logging
     None,
+    /// Informational logging
     Info,
+    /// Debug loggin
     Debug,
+    /// Very verbose debug logging
     LongDebug,
 }
 
 impl Verbosity {
+    /// Convert to the raw abPOA `verbose` integer value
     pub fn as_raw(self) -> i32 {
         match self {
             Verbosity::None => sys::ABPOA_NONE_VERBOSE as i32,
@@ -783,6 +798,7 @@ impl Verbosity {
         }
     }
 
+    /// Convert from a raw abPOA `verbose` integer value
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_NONE_VERBOSE as i32 => Some(Verbosity::None),
@@ -794,14 +810,19 @@ impl Verbosity {
     }
 }
 
+/// Alignment mode used by abPOA
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlignMode {
+    /// Global (Needleman–Wunsch-like) alignment
     Global,
+    /// Local (Smith–Waterman-like) alignment
     Local,
+    /// Extension alignment
     Extend,
 }
 
 impl AlignMode {
+    /// Convert to the raw abPOA `align_mode` integer value
     pub fn as_raw(self) -> i32 {
         match self {
             AlignMode::Global => sys::ABPOA_GLOBAL_MODE as i32,
@@ -810,6 +831,7 @@ impl AlignMode {
         }
     }
 
+    /// Convert from a raw abPOA `align_mode` integer value
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_GLOBAL_MODE as i32 => Some(AlignMode::Global),
@@ -820,14 +842,19 @@ impl AlignMode {
     }
 }
 
+/// Gap penalty model used by abPOA
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GapMode {
+    /// Linear gap penalty
     Linear,
+    /// Affine gap penalty
     Affine,
+    /// Convex gap penalty
     Convex,
 }
 
 impl GapMode {
+    /// Convert to the raw abPOA `gap_mode` integer value
     pub fn as_raw(self) -> i32 {
         match self {
             GapMode::Linear => sys::ABPOA_LINEAR_GAP as i32,
@@ -836,6 +863,7 @@ impl GapMode {
         }
     }
 
+    /// Convert from a raw abPOA `gap_mode` integer value
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_LINEAR_GAP as i32 => Some(GapMode::Linear),
@@ -874,10 +902,18 @@ impl GapPenalty {
     }
 }
 
+/// Scoring scheme for pairwise alignment
+///
+/// `match_score` is an additive score for matches (must be non-negative). `mismatch` and gap
+/// penalties are positive values representing the *magnitude* of the penalty (abPOA applies the
+/// sign internally)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Scoring {
+    /// Score for a match
     pub match_score: i32,
+    /// Penalty for a mismatch (positive magnitude)
     pub mismatch: i32,
+    /// Gap penalty configuration
     pub gaps: GapPenalty,
 }
 
@@ -976,13 +1012,17 @@ impl Scoring {
     }
 }
 
+/// Consensus calling algorithm used by abPOA
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsensusAlgorithm {
+    /// Heaviest-bundle (edge-weight based) consensus
     HeaviestBundle,
+    /// Most-frequent (per-column voting) consensus
     MostFrequent,
 }
 
 impl ConsensusAlgorithm {
+    /// Convert to the raw abPOA `cons_algrm` integer value
     pub fn as_raw(self) -> i32 {
         match self {
             ConsensusAlgorithm::HeaviestBundle => sys::ABPOA_HB as i32,
@@ -990,6 +1030,7 @@ impl ConsensusAlgorithm {
         }
     }
 
+    /// Convert from a raw abPOA `cons_algrm` integer value
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_HB as i32 => Some(ConsensusAlgorithm::HeaviestBundle),
@@ -1011,6 +1052,7 @@ pub enum SentinelNode {
 }
 
 impl SentinelNode {
+    /// Raw node id value reserved by abPOA.
     pub const fn as_raw(self) -> i32 {
         match self {
             SentinelNode::Source => sys::ABPOA_SRC_NODE_ID as i32,
@@ -1018,10 +1060,12 @@ impl SentinelNode {
         }
     }
 
+    /// Convert to a [`NodeId`].
     pub const fn as_node_id(self) -> NodeId {
         NodeId(self.as_raw())
     }
 
+    /// Convert from a raw abPOA node id.
     pub const fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_SRC_NODE_ID as i32 => Some(SentinelNode::Source),
