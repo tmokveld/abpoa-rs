@@ -3,7 +3,7 @@
 Rust bindings and wrapper for the [abPOA](https://github.com/yangao07/abPOA) partial order aligner, not related to: https://github.com/broadinstitute/abpoa-rs.
 
 The wrapper lives in the `abpoa` crate, the raw FFI bindings are available as `abpoa::sys` (or via
-the `abpoa-sys` crate directly).
+the `abpoa-sys` crate directly; `abpoa_sys` in Rust code).
 
 ## Platform support
 
@@ -59,6 +59,13 @@ let mut aligner = Aligner::with_params(params)?;
 let result = aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::CONSENSUS)?;
 ```
 
+## User tips
+
+Input ordering can affect POA/MSA results, especially with incremental APIs, where progressive POA is not supported
+or in low complexity sequences where minimizers may be unreliable. For more consistent
+output (and sometimes better alignments), try sorting sequences by decreasing length (longest ->
+shortest) before alignment, this is a heuristic used by [Cactus](https://github.com/ComparativeGenomicsToolkit/cactus/blob/master/bar/impl/poaBarAligner.c#L1071-L1072).
+
 ## Rust wrapper API
 
 The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The main parts are:
@@ -73,8 +80,9 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
   holds one or more consensus sequences with coverage/read-id metadata.
 - `EncodedMsaView`: zero-copy output view borrowing from an `Aligner`.
 - `Graph`: read-only view of the internal POA graph for inspection or subgraph workflows.
-- `encode` helpers (`encode_dna`, `encode_aa`) and `Alphabet`: use these when working with encoded APIs
-  like `msa_encoded` or `align_sequence_raw`.
+- `abpoa::encode` helpers (`encode_dna`, `encode_aa`, `decode_dna`, `decode_aa`) and `Alphabet`: use
+  these when working with encoded outputs (`*encoded` APIs) or low-level methods like
+  `align_sequence_raw` that take encoded bases.
 
 See further down for examples using the API.
 
@@ -96,17 +104,42 @@ Ongoing work to improve this.
 
 abPOA exposes two different execution paths, and the wrapper mirrors that split:
 
-- **One-shot MSA**: [`Aligner::msa`] and [`Aligner::msa_encoded`] call the upstream C driver
+- **One-shot MSA**: `Aligner::msa` and `Aligner::msa_encoded` call the upstream C driver
   `abpoa_msa`. Each call resets the internal graph and rebuilds it from the provided batch.
   This path is the only one that can use minimizer seeding, guide-tree ordering, and anchored
   window alignment.
-- **Incremental / low-level**: APIs such as [`Aligner::msa_in_place`], [`Aligner::add_sequences`],
-  [`Aligner::align_sequence_raw`], and [`Aligner::add_alignment`] align reads directly to the
+- **Incremental / low-level**: APIs such as `Aligner::msa_in_place`, `Aligner::add_sequences`,
+  `Aligner::align_sequence_raw`, and `Aligner::add_alignment` align reads directly to the
   current graph in the order you provide them. They preserve graph state between calls and
   are meant for streaming or custom graph edits.
 
 **WARNING:** Because the incremental APIs never go through `abpoa_msa`, they **do not** use minimizer seeding
 or guide-tree partitioning even if those parameters are set.
+
+## Incremental API gotchas
+
+The incremental/low-level APIs are intentionally close to the upstream C implementation and assume
+that certain inputs are valid. If you violate these invariants, upstream abPOA may crash, call
+`exit()`, read/write out of bounds, and/or lead to undefined behavior.
+
+Some gotchas to keep in mind:
+
+- `NodeId` values and `SubgraphRange` bounds (including inputs to `Aligner::subgraph_nodes`) must
+  refer to nodes in the *current* graph (never make up ids; discard ids/ranges after
+  `Aligner::reset` / `Aligner::restore_graph`).
+- Methods that take "encoded" bases/sequences (e.g. `Aligner::add_node`,
+  `Aligner::align_sequence_raw`, `Aligner::align_sequence_to_subgraph`,
+  `Aligner::add_alignment`, `Aligner::add_subgraph_alignment`) expect abPOA symbol codes for the
+  current `Alphabet`; every byte must be in `0..alphabet_size` (use `encode_dna` / `encode_aa` /
+  `Alphabet` helpers, not ASCII).
+- `RawAlignment` values passed to `add_alignment*` must come from the same `Aligner`/graph state (do
+  not reuse alignments across different aligners/graphs or after a reset/restore).
+- File-driven and upstream I/O helpers can bypass Rust errors: an unreadable
+  `Parameters::set_score_matrix_file` path, malformed `restore_graph` input, or
+  `PogWriteOptions::Upstream` output can cause upstream abPOA to call `exit()`. Do not use these
+  APIs with untrusted paths/files if process termination is unacceptable.
+- More generally, upstream abPOA can call `exit()`/abort on some fatal errors 
+  inside the C library. Rust `Result` cannot represent those failures.
 
 ## Read IDs (`use_read_ids`) and output constraints
 
@@ -168,12 +201,12 @@ restoration). The borrow checker prevents mutating the aligner while a view exis
 These settings only affect the one-shot path (`msa` / `msa_encoded`) and only when
 `set_align_mode` is `Global`:
 
-- [`Parameters::set_minimizer_seeding(k, w, min_w)`] sets the minimizer parameters and implicitly
+- `Parameters::set_minimizer_seeding(k, w, min_w)` sets the minimizer parameters and implicitly
   enables seeding (`disable_seeding = false`). This activates abPOA anchored-window alignment
   based on minimizer chains.
-- [`Parameters::set_disable_seeding(true/false)`] gates the anchored-window mode. When `true`,
+- `Parameters::set_disable_seeding(true/false)` gates the anchored-window mode. When `true`,
   no minimizer anchors are used.
-- [`Parameters::set_progressive_poa(true)`] controls whether abPOA builds a minimizer-based guide
+- `Parameters::set_progressive_poa(true)` controls whether abPOA builds a minimizer-based guide
   tree to reorder reads before alignment.
 
 The combinations behave as in upstream abPOA:
@@ -186,7 +219,7 @@ The combinations behave as in upstream abPOA:
   anchored-window mode. If `set_progressive_poa(true)` is also set, reads are first reordered by
   the guide tree; if not, they are aligned in input order.
 
-Note: minimizer seeding can behave poorly on very low‑complexity or highly repetitive reads.
+Note: minimizer seeding can behave poorly on very low‑complexity or highly repetitive sequences.
 If you see truncated or odd consensus sequences in seeded mode, try disabling seeding or using
 larger `k/w` values.
 
