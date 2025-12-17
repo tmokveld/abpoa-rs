@@ -21,13 +21,14 @@ fn main() -> Result<()> {
 
     println!("MSA one-shot without seeding - no minimizer logging should be expected!");
     let mut plain_params = Parameters::configure()?;
+    plain_params.set_outputs(OutputMode::CONSENSUS);
     plain_params
         .set_disable_seeding(true)
         .set_verbosity(Verbosity::Info);
     let mut plain_aligner = Aligner::with_params(plain_params)?;
 
     let start = Instant::now();
-    let result = plain_aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::CONSENSUS)?;
+    let result = plain_aligner.msa(SequenceBatch::from_sequences(&seqs))?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);
     }
@@ -38,6 +39,7 @@ fn main() -> Result<()> {
         "MSA one-shot with minimizer seeding and progressive POA - minimizer logging should be expected!"
     );
     let mut seeded_params = Parameters::configure()?;
+    seeded_params.set_outputs(OutputMode::CONSENSUS);
     seeded_params
         .set_minimizer_seeding(6, 4, 5)?
         .set_progressive_poa(true)
@@ -45,7 +47,7 @@ fn main() -> Result<()> {
     let mut seeded_aligner = Aligner::with_params(seeded_params)?;
 
     let start = Instant::now();
-    let result = seeded_aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::CONSENSUS)?;
+    let result = seeded_aligner.msa(SequenceBatch::from_sequences(&seqs))?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);
     }
@@ -55,6 +57,7 @@ fn main() -> Result<()> {
         "Incremental build with the same parameters - no minimizer or guide-tree logging should be expected since this code-path is not used by the incremental API"
     );
     let mut inc_params = Parameters::configure()?;
+    inc_params.set_outputs(OutputMode::CONSENSUS);
     inc_params
         .set_minimizer_seeding(7, 4, 10)?
         .set_progressive_poa(true)
@@ -63,7 +66,7 @@ fn main() -> Result<()> {
 
     let start = Instant::now();
     incremental_aligner.msa_in_place(SequenceBatch::from_sequences(&seqs))?;
-    let result = incremental_aligner.finalize_msa(OutputMode::CONSENSUS)?;
+    let result = incremental_aligner.finalize_msa()?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);
     }

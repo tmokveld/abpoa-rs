@@ -2,8 +2,8 @@
 
 use abpoa::encode::encode_dna;
 use abpoa::{
-    Aligner, Alphabet, ConsensusAlgorithm, NodeId, OutputMode, Parameters, Result, SentinelNode,
-    SubgraphRange, Verbosity,
+    Aligner, Alphabet, ConsensusAlgorithm, NodeId, Parameters, Result, SentinelNode, SubgraphRange,
+    Verbosity,
 };
 
 fn main() -> Result<()> {
@@ -77,7 +77,7 @@ fn main() -> Result<()> {
         aligner.add_subgraph_alignment(range, seq, &res, idx as i32, total_reads, false)?;
     }
 
-    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    let result = aligner.finalize_msa()?;
 
     println!("\nMSA rows:");
     for row in result.msa {

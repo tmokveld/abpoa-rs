@@ -542,7 +542,7 @@ impl<'a> Iterator for GraphNodes<'a> {
 mod tests {
     use super::*;
     use crate::aligner::{Aligner, SequenceBatch};
-    use crate::params::{OutputMode, Parameters, SentinelNode};
+    use crate::params::{Parameters, SentinelNode};
 
     fn with_graph<F>(seqs: &[&[u8]], f: F)
     where
@@ -553,9 +553,7 @@ mod tests {
         aligner
             .msa_in_place(SequenceBatch::from_sequences(seqs))
             .unwrap();
-        aligner
-            .finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)
-            .unwrap();
+        aligner.finalize_msa().unwrap();
         let graph = aligner.graph().unwrap();
         let nodes: Vec<_> = graph.nodes().collect();
         f(&graph, nodes);
@@ -651,10 +649,7 @@ mod tests {
         let names = ["read1", "read2"];
 
         aligner
-            .msa(
-                SequenceBatch::from_sequences(&seqs).with_names(&names),
-                OutputMode::CONSENSUS | OutputMode::MSA,
-            )
+            .msa(SequenceBatch::from_sequences(&seqs).with_names(&names))
             .unwrap();
 
         let graph = aligner.graph().unwrap();

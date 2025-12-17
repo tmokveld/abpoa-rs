@@ -24,9 +24,15 @@ impl Aligner {
             return Ok(());
         }
 
+        let outputs = self.params.outputs();
+        if !outputs.contains(OutputMode::CONSENSUS) {
+            return Err(Error::InvalidInput(
+                "consensus output is disabled; enable OutputMode::CONSENSUS in Parameters".into(),
+            ));
+        }
+
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
-        self.params.set_outputs_for_call(OutputMode::CONSENSUS);
         let params_ptr = self.params.as_mut_ptr()?;
         let consensus_needs_msa_rank = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))
@@ -82,9 +88,15 @@ impl Aligner {
             return Ok(());
         }
 
+        let outputs = self.params.outputs();
+        if !outputs.contains(OutputMode::CONSENSUS) {
+            return Err(Error::InvalidInput(
+                "consensus output is disabled; enable OutputMode::CONSENSUS in Parameters".into(),
+            ));
+        }
+
         self.reset_cached_outputs()?;
         let alphabet = self.alphabet();
-        self.params.set_outputs_for_call(OutputMode::CONSENSUS);
         let params_ptr = self.params.as_mut_ptr()?;
         let consensus_needs_msa_rank = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))
@@ -163,6 +175,11 @@ impl Aligner {
         if self.graph_is_empty() {
             return Ok(());
         }
+        if !self.params.outputs().contains(OutputMode::MSA) {
+            return Err(Error::InvalidInput(
+                "MSA output is disabled; enable OutputMode::MSA in Parameters".into(),
+            ));
+        }
         if !self.graph_tracks_read_ids {
             return Err(Error::InvalidInput(
                 "cannot generate MSA from a graph built without read ids; rebuild the graph with read ids enabled before adding sequences"
@@ -171,8 +188,6 @@ impl Aligner {
         }
 
         self.reset_cached_outputs()?;
-        self.params
-            .set_outputs_for_call(OutputMode::CONSENSUS | OutputMode::MSA);
         self.ensure_msa_rank_buffer()?;
         let alphabet = self.alphabet();
         let decode_row: fn(&[u8]) -> String = match alphabet {
@@ -250,53 +265,66 @@ impl Aligner {
             ));
         }
 
+        let outputs = self.params.outputs();
+        if !outputs.contains(OutputMode::MSA) {
+            return Err(Error::InvalidInput(
+                "GFA output requires MSA output; enable OutputMode::MSA in Parameters".into(),
+            ));
+        }
+
         self.reset_cached_outputs()?;
         let abs_ptr = unsafe { (*self.as_ptr()).abs };
         let has_consensus = has_consensus_sequence(abs_ptr)?;
-        let desired_outputs = if has_consensus {
-            // Avoid regenerating consensus if the graph already carries one from a restore
-            OutputMode::MSA
-        } else {
+        let wants_consensus = outputs.contains(OutputMode::CONSENSUS);
+        let desired_outputs = if wants_consensus && !has_consensus {
             OutputMode::CONSENSUS | OutputMode::MSA
+        } else {
+            // Avoid regenerating consensus if the graph already carries one from a restore.
+            OutputMode::MSA
         };
         if desired_outputs.contains(OutputMode::CONSENSUS) && self.consensus_needs_msa_rank()? {
             self.ensure_msa_rank_buffer()?;
         }
+        let previous_outputs = outputs;
         self.params.set_outputs_for_call(desired_outputs);
-        let params_ptr = self.params.as_mut_ptr()?;
+        let write_result = (|| -> Result<()> {
+            let params_ptr = self.params.as_mut_ptr()?;
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path.as_ref())?;
-        // Safety: `dup` creates an owned fd for `fdopen`/`fclose` without double-closing `file`
-        let dup_fd = unsafe { libc::dup(file.as_raw_fd()) };
-        if dup_fd < 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        // Safety: `dup_fd` is a valid fd opened for read/write; `fdopen` takes ownership
-        let fp = unsafe { libc::fdopen(dup_fd, c"w+".as_ptr() as *const c_char) };
-
-        if fp.is_null() {
-            unsafe { libc::close(dup_fd) };
-            return Err(Error::NullPointer("failed to open FILE for GFA output"));
-        }
-
-        let write_result = {
-            unsafe {
-                sys::abpoa_generate_gfa(self.as_mut_ptr(), params_ptr, fp as *mut sys::FILE);
-                libc::fflush(fp);
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path.as_ref())?;
+            // Safety: `dup` creates an owned fd for `fdopen`/`fclose` without double-closing `file`
+            let dup_fd = unsafe { libc::dup(file.as_raw_fd()) };
+            if dup_fd < 0 {
+                return Err(std::io::Error::last_os_error().into());
             }
-            Ok(())
-        };
 
-        unsafe { libc::fclose(fp) };
-        // abpoa_generate_gfa may allocate consensus buffers when out_cons is enabled
-        unsafe { sys::abpoa_clean_msa_cons(self.as_mut_ptr()) };
+            // Safety: `dup_fd` is a valid fd opened for read/write; `fdopen` takes ownership
+            let fp = unsafe { libc::fdopen(dup_fd, c"w+".as_ptr() as *const c_char) };
 
+            if fp.is_null() {
+                unsafe { libc::close(dup_fd) };
+                return Err(Error::NullPointer("failed to open FILE for GFA output"));
+            }
+
+            let write_result = {
+                unsafe {
+                    sys::abpoa_generate_gfa(self.as_mut_ptr(), params_ptr, fp as *mut sys::FILE);
+                    libc::fflush(fp);
+                }
+                Ok(())
+            };
+
+            unsafe { libc::fclose(fp) };
+            // abpoa_generate_gfa may allocate consensus buffers when out_cons is enabled
+            unsafe { sys::abpoa_clean_msa_cons(self.as_mut_ptr()) };
+
+            write_result
+        })();
+        self.params.set_outputs_for_call(previous_outputs);
         write_result
     }
 

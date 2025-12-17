@@ -21,7 +21,8 @@ pub struct Cluster {
     pub phred: Vec<u8>,
 }
 
-/// Output of a one-shot MSA run: per-sequence alignments plus consensus clusters
+/// Output of an alignment run: per-sequence alignments (when MSA output is enabled) plus consensus
+/// clusters (when consensus output is enabled).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MsaResult {
     pub msa: Vec<String>,
@@ -50,6 +51,8 @@ pub struct EncodedCluster {
 /// buffers (0..m-1 codes for the configured alphabet) and can be decoded
 /// using [`crate::encode::decode_dna`] or [`crate::encode::decode_aa`] if
 /// needed.
+///
+/// The `msa` and `clusters` fields may be empty depending on which outputs were enabled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedMsaResult {
     pub msa: Vec<Vec<u8>>,

@@ -24,10 +24,11 @@ pub use raw_alignment::{CigarOp, GraphCigar, GraphCigarOp, RawAlignment};
 /// Wrapper around `abpoa_t`
 ///
 /// `Aligner` is stateful: methods that generate consensus/MSA/GFA outputs may
-/// update the underlying `Parameters` (for example `outputs` or quality-weighted
-/// consensus mode). These changes persist for subsequent operations on the same
-/// aligner. If you need a clean configuration, construct a new `Aligner` with
-/// fresh `Parameters`
+/// update the underlying `Parameters` (for example enabling quality-weighted scoring based on
+/// per-base weights). These changes persist for subsequent operations on the same aligner.
+///
+/// Output generation is controlled by [`Parameters::set_outputs`] (defaults to generating both
+/// consensus and MSA output).
 pub struct Aligner {
     raw: NonNull<sys::abpoa_t>,
     params: Parameters,

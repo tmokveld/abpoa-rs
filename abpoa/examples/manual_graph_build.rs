@@ -1,8 +1,8 @@
 //! Compares the high-level msa helper with an equivalent manual graph-building flow
 
 use abpoa::{
-    AlignMode, Aligner, Alphabet, ConsensusAlgorithm, OutputMode, Parameters, Result, Scoring,
-    SequenceBatch, Verbosity, encode::encode_dna,
+    AlignMode, Aligner, Alphabet, ConsensusAlgorithm, Parameters, Result, Scoring, SequenceBatch,
+    Verbosity, encode::encode_dna,
 };
 
 fn main() -> Result<()> {
@@ -29,10 +29,7 @@ fn main() -> Result<()> {
         .set_verbosity(Verbosity::Info);
 
     let mut aligner = Aligner::with_params(params)?;
-    let result = aligner.msa(
-        SequenceBatch::from_sequences(&sequences),
-        OutputMode::CONSENSUS | OutputMode::MSA,
-    )?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&sequences))?;
 
     assert_eq!(result.msa.len(), truth.len());
     for (row, expected) in result.msa.iter().zip(truth.iter()) {
@@ -67,7 +64,7 @@ fn main() -> Result<()> {
         }
         manual.add_alignment(seq, &aln, idx as i32, total_reads)?; // Add the alignment to the graph
     }
-    let manual_result = manual.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?; // Finalize the MSA
+    let manual_result = manual.finalize_msa()?; // Finalize the MSA
 
     assert_eq!(manual_result.msa.len(), truth.len());
     for (row, expected) in manual_result.msa.iter().zip(truth.iter()) {

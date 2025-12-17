@@ -1,9 +1,7 @@
 //! Aligns reads to a selected slice of the POA graph to demonstrate subgraph-restricted alignment
 
 use abpoa::encode::encode_dna;
-use abpoa::{
-    Aligner, Alphabet, NodeId, OutputMode, Parameters, Result, SentinelNode, SubgraphRange,
-};
+use abpoa::{Aligner, Alphabet, NodeId, Parameters, Result, SentinelNode, SubgraphRange};
 use std::convert::TryFrom;
 
 fn main() -> Result<()> {
@@ -54,7 +52,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    let result = aligner.finalize_msa()?;
     println!("Consensus sequences:");
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("  [{}] {}", idx, cluster.consensus);

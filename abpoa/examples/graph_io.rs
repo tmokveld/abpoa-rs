@@ -34,13 +34,11 @@ fn main() -> abpoa::Result<()> {
         .set_ambiguous_strand(true); // Enable reverse complement handling
     let mut aligner = Aligner::with_params(params)?;
 
-    let msa = aligner.msa(
-        SequenceBatch::from_sequences(&seqs).with_names(&name_refs),
-        OutputMode::CONSENSUS | OutputMode::MSA,
-    )?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&seqs).with_names(&name_refs))?;
     println!(
         "Consensus sequences: {:?}",
-        msa.clusters
+        result
+            .clusters
             .iter()
             .map(|c| &c.consensus)
             .collect::<Vec<_>>()
@@ -69,9 +67,10 @@ fn main() -> abpoa::Result<()> {
 
     // Reload the graph from the saved FASTA or GFA file
     println!("\nReloading graph from FASTA or GFA file, contents:");
-    // Note you can also use the Aligner::from_graph_file method to reload the graph from the MSA FASTA file but it will use default Parameters (n_consensus=1)
+    // Note you can also use the Aligner::from_graph_file method to reload the graph from the MSA FASTA file but it will use default Parameters (n_consensus=1), probably good idea to add a Parameters argument to it
     // let mut reloaded_aligner = Aligner::from_graph_file(&msa_path, true)?;
     let mut params = Parameters::configure()?;
+    params.set_outputs(OutputMode::CONSENSUS);
     params
         .set_max_consensus(2)?
         .set_incremental_graph_file(&gfa_path)?
@@ -79,7 +78,7 @@ fn main() -> abpoa::Result<()> {
     let mut reloaded_aligner = Aligner::with_params(params)?;
     reloaded_aligner.restore_graph()?;
 
-    let result = reloaded_aligner.finalize_msa(OutputMode::CONSENSUS)?;
+    let result = reloaded_aligner.finalize_msa()?;
     for (i, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {i}: {}", cluster.consensus);
     }

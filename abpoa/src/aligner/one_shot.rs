@@ -1,47 +1,36 @@
 use super::{Aligner, SequenceBatch, encode_sequences, to_i32, validate_quality_weights};
 use crate::encode::Alphabet;
-use crate::params::OutputMode;
 use crate::result::{EncodedMsaResult, EncodedMsaView, MsaResult};
 use crate::{Error, Result, sys};
 use std::ptr;
 
 impl Aligner {
-    /// Run abPOA's one-shot MSA on a set of sequences and return the consensus/MSA output
+    /// Run abPOA's one-shot MSA on a set of sequences and return the configured consensus/MSA output.
     ///
     /// This calls into abPOA `abpoa_msa`, so minimizer seeding, guide-tree
     /// partitioning, and progressive POA parameters will be used if enabled
-    pub fn msa(&mut self, batch: SequenceBatch<'_>, outputs: OutputMode) -> Result<MsaResult> {
-        self.msa_one_shot_inner(batch, outputs, |abc, alphabet| unsafe {
+    pub fn msa(&mut self, batch: SequenceBatch<'_>) -> Result<MsaResult> {
+        self.msa_one_shot_inner(batch, |abc, alphabet| unsafe {
             MsaResult::from_raw(abc, alphabet)
         })
     }
 
     /// Run abPOA's one-shot MSA on a set of sequences and return encoded consensus/MSA output
-    pub fn msa_encoded(
-        &mut self,
-        batch: SequenceBatch<'_>,
-        outputs: OutputMode,
-    ) -> Result<EncodedMsaResult> {
-        self.msa_one_shot_inner(batch, outputs, |abc, _| unsafe {
-            EncodedMsaResult::from_raw(abc)
-        })
+    pub fn msa_encoded(&mut self, batch: SequenceBatch<'_>) -> Result<EncodedMsaResult> {
+        self.msa_one_shot_inner(batch, |abc, _| unsafe { EncodedMsaResult::from_raw(abc) })
     }
 
     /// Run abPOA's one-shot MSA and return results as zero-copy encoded views.
     pub fn msa_view_encoded<'a>(
         &'a mut self,
         batch: SequenceBatch<'_>,
-        outputs: OutputMode,
     ) -> Result<EncodedMsaView<'a>> {
-        self.msa_one_shot_inner(batch, outputs, |abc, alphabet| {
-            EncodedMsaView::new(abc, alphabet)
-        })
+        self.msa_one_shot_inner(batch, EncodedMsaView::new)
     }
 
     fn msa_one_shot_inner<T>(
         &mut self,
         batch: SequenceBatch<'_>,
-        outputs: OutputMode,
         convert: impl FnOnce(*const sys::abpoa_cons_t, Alphabet) -> T,
     ) -> Result<T> {
         let seqs = batch.sequences();
@@ -52,6 +41,7 @@ impl Aligner {
         if seqs.iter().any(|seq| seq.is_empty()) {
             return Err(Error::InvalidInput("cannot align an empty sequence".into()));
         }
+        let outputs = self.params.outputs();
         if outputs.is_empty() {
             return Err(Error::InvalidInput(
                 "enable consensus and/or msa output to collect results".into(),
@@ -61,7 +51,6 @@ impl Aligner {
         self.reset_cached_outputs()?;
         self.params
             .set_use_quality(batch.quality_weights().is_some());
-        self.params.set_outputs_for_call(outputs);
 
         let alphabet = self.alphabet();
         let encoded = encode_sequences(seqs, alphabet);

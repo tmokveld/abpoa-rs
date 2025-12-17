@@ -22,17 +22,14 @@ cargo test --workspace
 ## Quick start
 
 ```rust
-use abpoa::{Aligner, OutputMode, Parameters, SequenceBatch};
+use abpoa::{Aligner, Parameters, SequenceBatch};
 
 fn main() -> abpoa::Result<()> {
     let params = Parameters::new()?;
 
     let mut aligner = Aligner::with_params(params)?;
     let sequences = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
-    let result = aligner.msa(
-        SequenceBatch::from_sequences(&sequences),
-        OutputMode::CONSENSUS | OutputMode::MSA,
-    )?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&sequences))?;
     println!("Consensus: {}", result.clusters[0].consensus);
     Ok(())
 }
@@ -50,13 +47,14 @@ use abpoa::{Aligner, AlignMode, ConsensusAlgorithm, OutputMode, Parameters, Scor
 let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
 
 let mut params = Parameters::configure()?;
+params.set_outputs(OutputMode::CONSENSUS);
 params
     .set_align_mode(AlignMode::Global)
     .set_scoring_scheme(Scoring::affine(2, 4, 4, 1))?
     .set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.0)?;
 
 let mut aligner = Aligner::with_params(params)?;
-let result = aligner.msa(SequenceBatch::from_sequences(&seqs), OutputMode::CONSENSUS)?;
+let result = aligner.msa(SequenceBatch::from_sequences(&seqs))?;
 ```
 
 ## User tips
@@ -75,7 +73,7 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
 - `Parameters`: scoring and algorithm configuration (alignment mode, seeding, consensus, RC handling,
   verbosity, etc.), nearly all setters are chainable.
 - `SequenceBatch`: a view over input sequences plus optional read names and quality weights.
-- `OutputMode`: choose which outputs to compute (`OutputMode::CONSENSUS`, `OutputMode::MSA`, or both).
+- `OutputMode`: choose which outputs to compute (`OutputMode::CONSENSUS`, `OutputMode::MSA`, or both) via `Parameters::set_outputs`.
 - `MsaResult` / `EncodedMsaResult`: owned alignment output. `msa` holds per-read aligned rows; `clusters`
   holds one or more consensus sequences with coverage/read-id metadata.
 - `EncodedMsaView`: zero-copy output view borrowing from an `Aligner`.
@@ -177,7 +175,7 @@ params
     .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?; // keep max_consensus = 1
 
 let mut aligner = Aligner::with_params(params)?;
-aligner.msa_in_place(SequenceBatch::from_sequences(&seqs))?;
+aligner.msa(SequenceBatch::from_sequences(&seqs))?;
 aligner.write_consensus_fasta(&mut std::io::stdout())?;
 
 // These will error because the graph was built without read ids:

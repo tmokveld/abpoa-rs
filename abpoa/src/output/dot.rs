@@ -314,16 +314,17 @@ fn normalize_range(min: f32, max: f32) -> (f32, f32) {
 
 #[cfg(test)]
 mod tests {
+    use crate::{Aligner, Parameters, SequenceBatch};
+
     use super::*;
 
     #[test]
     fn dot_output_surfaces_consensus_node_ids() {
         let sequences = [b"ACGT".as_ref(), b"ACGT".as_ref()];
-        let mut aligner = crate::Aligner::new().unwrap();
-        aligner
-            .msa_in_place(crate::SequenceBatch::from_sequences(&sequences))
+        let mut aligner = Aligner::with_params(Parameters::new().unwrap()).unwrap();
+        let result = aligner
+            .msa(SequenceBatch::from_sequences(&sequences))
             .unwrap();
-        let result = aligner.finalize_msa(crate::OutputMode::CONSENSUS).unwrap();
         assert!(
             !result.clusters.is_empty(),
             "consensus should produce at least one cluster"

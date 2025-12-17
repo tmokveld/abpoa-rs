@@ -1,6 +1,6 @@
 //! Aligns sequences in multiple passes to show how the POA graph grows before generating a final MSA
 
-use abpoa::{Aligner, OutputMode, Parameters, Result, SequenceBatch};
+use abpoa::{Aligner, Parameters, Result, SequenceBatch};
 
 fn main() -> Result<()> {
     let seqs: Vec<&[u8]> = vec![
@@ -26,7 +26,7 @@ fn main() -> Result<()> {
 
     // Align the first few sequences
     aligner.msa_in_place(SequenceBatch::from_sequences(&seqs[..first_part]))?;
-    let initial = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    let initial = aligner.finalize_msa()?;
     println!("Initial MSA (first {first_part} sequences):");
     println!("\nMSA rows:");
     for row in &initial.msa {
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
         aligner.add_sequences(SequenceBatch::from_sequences(&[seq]))?;
     }
 
-    let secondary = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    let secondary = aligner.finalize_msa()?;
     println!("Secondary MSA (after appending the second part of {second_part} sequences):");
     println!("\nMSA rows:");
     for row in &secondary.msa {
@@ -77,7 +77,7 @@ fn main() -> Result<()> {
         ))?;
     }
 
-    let result = aligner.finalize_msa(OutputMode::CONSENSUS | OutputMode::MSA)?;
+    let result = aligner.finalize_msa()?;
     let graph = aligner.graph()?;
     println!(
         "> Final MSA after all sequences ({} total, {} nodes):",

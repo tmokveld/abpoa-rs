@@ -1,6 +1,6 @@
 //! Rust port of the upstream `example.c`, showing quality-weighted MSA and graph/consensus outputs
 
-use abpoa::{Aligner, OutputMode, Parameters, Result, SequenceBatch, Verbosity};
+use abpoa::{Aligner, Parameters, Result, SequenceBatch, Verbosity};
 
 fn main() -> Result<()> {
     let seqs: Vec<&[u8]> = vec![
@@ -27,10 +27,13 @@ fn main() -> Result<()> {
         .set_verbosity(Verbosity::Info);
 
     let mut aligner = Aligner::with_params(params)?;
-    let result = aligner.msa(
-        SequenceBatch::from_sequences(&seqs).with_quality_weights(&weight_refs),
-        OutputMode::CONSENSUS | OutputMode::MSA,
-    )?;
+    let result =
+        aligner.msa(SequenceBatch::from_sequences(&seqs).with_quality_weights(&weight_refs))?;
+
+    println!("Consensus sequences:");
+    for cluster in result.clusters {
+        println!("Consensus: {}", cluster.consensus);
+    }
 
     println!("=== msa using manual print ===");
     println!("\nMSA rows:");

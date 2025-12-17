@@ -11,7 +11,7 @@
 //! ```
 //! This should run without ThreadSanitizer reporting a data race.
 
-use abpoa::{Aligner, OutputMode, Parameters, Result, SequenceBatch};
+use abpoa::{Aligner, Parameters, Result, SequenceBatch};
 use std::{sync::Arc, thread, time::Instant};
 
 #[path = "shared/sim.rs"]
@@ -77,7 +77,6 @@ fn run_once(
 ) -> Result<String> {
     let read_refs: Vec<&[u8]> = reads.iter().map(|r| r.as_slice()).collect();
     let mut params = Parameters::configure()?;
-    params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
     params.set_consensus(abpoa::ConsensusAlgorithm::MostFrequent, 2, 0.3)?;
     let mut aligner = Aligner::with_params(params)?;
 
@@ -98,10 +97,7 @@ fn run_once(
     let mut expected: Option<String> = None;
     for iter_idx in 0..iters {
         let iter_start = Instant::now();
-        let result = aligner.msa(
-            SequenceBatch::from_sequences(&read_refs),
-            OutputMode::CONSENSUS,
-        )?;
+        let result = aligner.msa(SequenceBatch::from_sequences(&read_refs))?;
         let got = result
             .clusters
             .first()

@@ -596,7 +596,7 @@ impl Aligner {
     ///
     /// This aligns each sequence against the current graph in input order. Minimizer seeding,
     /// guide-tree partitioning, and progressive POA settings are only used by [`msa`] /
-    /// [`msa_encoded`] and do not affect this incremental API
+    /// [`msa_encoded`] / [`msa_view_encoded`] and do not affect this incremental API
     pub fn msa_in_place(&mut self, batch: SequenceBatch<'_>) -> Result<()> {
         let seqs = batch.sequences();
         if seqs.is_empty() {
@@ -653,25 +653,22 @@ impl Aligner {
     }
 
     /// Generate consensus and/or MSA output from the current graph
-    pub fn finalize_msa(&mut self, outputs: OutputMode) -> Result<MsaResult> {
-        self.finalize_msa_inner(outputs, |abc, alphabet| unsafe {
-            MsaResult::from_raw(abc, alphabet)
-        })
+    pub fn finalize_msa(&mut self) -> Result<MsaResult> {
+        self.finalize_msa_inner(|abc, alphabet| unsafe { MsaResult::from_raw(abc, alphabet) })
     }
 
     /// Generate consensus and/or MSA output from the current graph in the raw abPOA alphabet
-    pub fn finalize_msa_encoded(&mut self, outputs: OutputMode) -> Result<EncodedMsaResult> {
-        self.finalize_msa_inner(outputs, |abc, _| unsafe { EncodedMsaResult::from_raw(abc) })
+    pub fn finalize_msa_encoded(&mut self) -> Result<EncodedMsaResult> {
+        self.finalize_msa_inner(|abc, _| unsafe { EncodedMsaResult::from_raw(abc) })
     }
 
     /// Generate consensus and/or MSA output from the current graph as zero-copy encoded views
-    pub fn finalize_msa_view_encoded(&mut self, outputs: OutputMode) -> Result<EncodedMsaView<'_>> {
-        self.finalize_msa_inner(outputs, EncodedMsaView::new)
+    pub fn finalize_msa_view_encoded(&mut self) -> Result<EncodedMsaView<'_>> {
+        self.finalize_msa_inner(EncodedMsaView::new)
     }
 
     fn finalize_msa_inner<T>(
         &mut self,
-        outputs: OutputMode,
         convert: impl FnOnce(*const sys::abpoa_cons_t, Alphabet) -> T,
     ) -> Result<T> {
         self.reset_cached_outputs()?;
@@ -680,6 +677,7 @@ impl Aligner {
             return Ok(convert(ptr::null(), alphabet));
         }
 
+        let outputs = self.params.outputs();
         if outputs.is_empty() {
             return Err(Error::InvalidInput(
                 "enable consensus and/or msa output before finalizing".into(),
@@ -693,7 +691,6 @@ impl Aligner {
         }
 
         let alphabet = self.alphabet();
-        self.params.set_outputs_for_call(outputs);
 
         let consensus_needs_msa_rank =
             outputs.contains(OutputMode::CONSENSUS) && self.consensus_needs_msa_rank()?;

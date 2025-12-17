@@ -1,8 +1,6 @@
 //! Demonstrate zero-copy encoded output views (`EncodedMsaView` / `EncodedMsaRows` / `EncodedClusterView`)
 
-use abpoa::{
-    Aligner, EncodedClusterView, EncodedMsaRows, OutputMode, Parameters, SequenceBatch, encode,
-};
+use abpoa::{Aligner, EncodedClusterView, EncodedMsaRows, Parameters, SequenceBatch, encode};
 
 fn main() -> abpoa::Result<()> {
     let seqs: Vec<&[u8]> = vec![
@@ -22,10 +20,7 @@ fn main() -> abpoa::Result<()> {
     params.set_max_consensus(2)?;
 
     let mut aligner = Aligner::with_params(params)?;
-    let view = aligner.msa_view_encoded(
-        SequenceBatch::from_sequences(&seqs),
-        OutputMode::CONSENSUS | OutputMode::MSA,
-    )?;
+    let view = aligner.msa_view_encoded(SequenceBatch::from_sequences(&seqs))?;
 
     println!(
         "alphabet: {:?}\nsequences: {}\nmsa_len: {}\nclusters: {}",
