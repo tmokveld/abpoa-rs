@@ -47,8 +47,8 @@ use abpoa::{Aligner, AlignMode, ConsensusAlgorithm, OutputMode, Parameters, Scor
 let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
 
 let mut params = Parameters::configure()?;
-params.set_outputs(OutputMode::CONSENSUS);
 params
+    .set_outputs(OutputMode::CONSENSUS)
     .set_align_mode(AlignMode::Global)
     .set_scoring_scheme(Scoring::affine(2, 4, 4, 1))?
     .set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.0)?;
@@ -169,8 +169,8 @@ use abpoa::{Aligner, ConsensusAlgorithm, OutputMode, Parameters, SequenceBatch};
 let seqs = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
 
 let mut params = Parameters::configure()?;
-params.set_outputs(OutputMode::CONSENSUS);
 params
+    .set_outputs(OutputMode::CONSENSUS)
     .set_use_read_ids(false) // allow read-id-less graphs
     .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?; // keep max_consensus = 1
 

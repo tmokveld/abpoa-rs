@@ -73,9 +73,10 @@ impl Parameters {
             dirty: true,
             _not_send_sync: PhantomData,
         };
-        params.set_alphabet(Alphabet::Dna)?;
-        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
-        params.set_use_read_ids(true);
+        params
+            .set_alphabet(Alphabet::Dna)?
+            .set_outputs(OutputMode::CONSENSUS | OutputMode::MSA)
+            .set_use_read_ids(true);
         Ok(params)
     }
 
@@ -166,7 +167,7 @@ impl Parameters {
     }
 
     /// Configure the alphabet used for encoding sequences
-    pub fn set_alphabet(&mut self, alphabet: Alphabet) -> Result<()> {
+    pub fn set_alphabet(&mut self, alphabet: Alphabet) -> Result<&mut Self> {
         let m = alphabet_size(alphabet);
 
         let current_m = unsafe { self.raw.as_ref().m };
@@ -181,7 +182,7 @@ impl Parameters {
 
         self.alphabet = alphabet;
         self.mark_dirty();
-        Ok(())
+        Ok(self)
     }
 
     fn resize_matrix(&mut self, m: i32) -> Result<()> {
@@ -480,8 +481,7 @@ impl Parameters {
     }
 
     /// Configure which outputs abPOA should generate when asked to finalize
-    pub fn set_outputs(&mut self, outputs: OutputMode) -> OutputMode {
-        let previous = self.outputs();
+    pub fn set_outputs(&mut self, outputs: OutputMode) -> &mut Self {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
             let raw = self.raw.as_mut();
@@ -489,7 +489,7 @@ impl Parameters {
             raw.set_out_msa(outputs.contains(OutputMode::MSA) as u8);
         }
         self.mark_dirty();
-        previous
+        self
     }
 
     /// Current configured outputs
@@ -1297,7 +1297,8 @@ mod tests {
         let mut params = Parameters::new().unwrap();
         assert_eq!(params.outputs(), OutputMode::CONSENSUS | OutputMode::MSA);
 
-        let previous = params.set_outputs(OutputMode::MSA);
+        let previous = params.outputs();
+        params.set_outputs(OutputMode::MSA);
         assert_eq!(previous, OutputMode::CONSENSUS | OutputMode::MSA);
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.out_cons(), 0);
@@ -1330,9 +1331,7 @@ mod tests {
     #[test]
     fn use_read_ids_disabled_rejects_msa_output() {
         let mut params = Parameters::new().unwrap();
-        params.set_outputs(OutputMode::MSA);
-        params.set_use_read_ids(false);
-
+        params.set_outputs(OutputMode::MSA).set_use_read_ids(false);
         let err = params.as_mut_ptr().unwrap_err();
         assert!(matches!(err, Error::InvalidInput(_)));
     }
@@ -1340,8 +1339,9 @@ mod tests {
     #[test]
     fn set_outputs_for_call_does_not_auto_enable_read_ids() {
         let mut params = Parameters::new().unwrap();
-        params.set_outputs(OutputMode::CONSENSUS);
-        params.set_use_read_ids(false);
+        params
+            .set_outputs(OutputMode::CONSENSUS)
+            .set_use_read_ids(false);
         params.as_mut_ptr().unwrap();
 
         let raw = unsafe { params.raw.as_ref() };
@@ -1359,8 +1359,9 @@ mod tests {
     #[test]
     fn strict_read_ids_validation_in_setters() {
         let mut params = Parameters::new().unwrap();
-        params.set_outputs(OutputMode::CONSENSUS);
-        params.set_use_read_ids(false);
+        params
+            .set_outputs(OutputMode::CONSENSUS)
+            .set_use_read_ids(false);
 
         assert!(matches!(
             params.set_max_consensus(2),
@@ -1375,8 +1376,11 @@ mod tests {
     #[test]
     fn consensus_and_verbosity_limits() {
         let mut params = Parameters::new().unwrap();
-        params.set_max_consensus(2).unwrap();
-        params.set_min_cluster_freq(0.4).unwrap();
+        params
+            .set_max_consensus(2)
+            .unwrap()
+            .set_min_cluster_freq(0.4)
+            .unwrap();
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.max_n_cons, 2);
         assert!((raw.min_freq - 0.4).abs() < f64::EPSILON);

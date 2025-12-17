@@ -49,11 +49,6 @@ fn from_graph_file_restores_graph_and_toggle_read_ids() {
 #[test]
 fn raw_alignment_exposes_cigar_and_counts() {
     let mut aligner = Aligner::new().unwrap();
-    {
-        let params = aligner.params_mut();
-        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
-        params.set_alphabet(Alphabet::Dna).unwrap();
-    }
 
     let ref_seq = encode_dna(b"ACGT");
     let query = encode_dna(b"AGGT");
@@ -258,11 +253,6 @@ fn gfa_writer_generates_header() {
 #[test]
 fn graph_alignment_round_trip() {
     let mut aligner = Aligner::new().unwrap();
-    {
-        let params = aligner.params_mut();
-        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
-        params.set_alphabet(Alphabet::Dna).unwrap();
-    }
 
     let seqs = [encode_dna(b"ACGT"), encode_dna(b"ACGG")];
     let max_len = seqs.iter().map(Vec::len).max().unwrap();
@@ -360,11 +350,6 @@ fn adding_sequences_updates_graph() {
 #[test]
 fn subgraph_alignment_matches_one_shot() {
     let mut aligner = Aligner::new().unwrap();
-    {
-        let params = aligner.params_mut();
-        params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
-        params.set_alphabet(Alphabet::Dna).unwrap();
-    }
 
     let seqs = [
         encode_dna(b"ACGT"),
@@ -426,11 +411,6 @@ fn format_alignment_renders_indels() {
         F: Fn(&GraphCigarOp) -> bool,
     {
         let mut aligner = Aligner::new().unwrap();
-        {
-            let params = aligner.params_mut();
-            params.set_outputs(OutputMode::CONSENSUS | OutputMode::MSA);
-            params.set_alphabet(Alphabet::Dna).unwrap();
-        }
 
         let reference = encode_dna(reference);
         let query = encode_dna(query);
@@ -477,11 +457,9 @@ fn format_alignment_renders_indels() {
 
 #[test]
 fn msa_encoded_matches_decoded_for_amino_acids() {
-    let mut aligner = Aligner::new().unwrap();
-    {
-        let params = aligner.params_mut();
-        params.set_alphabet(Alphabet::AminoAcid).unwrap();
-    }
+    let mut params = Parameters::configure().unwrap();
+    params.set_alphabet(Alphabet::AminoAcid).unwrap();
+    let mut aligner = Aligner::with_params(params).unwrap();
 
     let sequences = [b"ACDE".as_ref(), b"ACDF".as_ref()];
 
@@ -580,12 +558,10 @@ fn finalize_msa_view_encoded_matches_owned() {
 
 #[test]
 fn read_id_less_graph_rejects_msa_gfa_and_multi_consensus() {
-    let mut aligner = Aligner::new().unwrap();
-    {
-        let params = aligner.params_mut();
-        params.set_outputs(OutputMode::CONSENSUS);
-        params.set_use_read_ids(false);
-    }
+    let mut params = Parameters::configure().unwrap();
+    params.set_outputs(OutputMode::CONSENSUS);
+    params.set_use_read_ids(false);
+    let mut aligner = Aligner::with_params(params).unwrap();
 
     aligner
         .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))

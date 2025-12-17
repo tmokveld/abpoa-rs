@@ -70,11 +70,11 @@ fn main() -> abpoa::Result<()> {
     // Note you can also use the Aligner::from_graph_file method to reload the graph from the MSA FASTA file but it will use default Parameters (n_consensus=1), probably good idea to add a Parameters argument to it
     // let mut reloaded_aligner = Aligner::from_graph_file(&msa_path, true)?;
     let mut params = Parameters::configure()?;
-    params.set_outputs(OutputMode::CONSENSUS);
     params
         .set_max_consensus(2)?
         .set_incremental_graph_file(&gfa_path)?
-        .set_use_read_ids(true);
+        .set_use_read_ids(true)
+        .set_outputs(OutputMode::CONSENSUS);
     let mut reloaded_aligner = Aligner::with_params(params)?;
     reloaded_aligner.restore_graph()?;
 
