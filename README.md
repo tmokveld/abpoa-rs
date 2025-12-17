@@ -3,7 +3,7 @@
 Rust bindings and wrapper for the [abPOA](https://github.com/yangao07/abPOA) partial order aligner, not related to: https://github.com/broadinstitute/abpoa-rs.
 
 The wrapper lives in the `abpoa` crate, the raw FFI bindings are available as `abpoa::sys` (or via
-the `abpoa-sys` crate directly; `abpoa_sys` in Rust code).
+the `abpoa-ffi-sys` crate directly; `abpoa_ffi_sys` in Rust code).
 
 ## Platform support
 

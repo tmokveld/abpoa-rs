@@ -11,7 +11,7 @@ libc = "0.2"
 thiserror = "2"
 
 [target.'cfg(unix)'.dependencies]
-abpoa-sys = { path = "../abpoa-sys", version = "0.1.0" }
+abpoa-ffi-sys = { path = "../abpoa-sys", version = "0.1.0" }
 
 [dev-dependencies]
 rand = "0.9"

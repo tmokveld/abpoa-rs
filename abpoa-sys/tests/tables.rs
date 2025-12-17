@@ -1,4 +1,4 @@
-use abpoa_sys::{AB_AA26_TABLE, AB_AA256_TABLE};
+use abpoa_ffi_sys::{AB_AA26_TABLE, AB_AA256_TABLE};
 
 #[test]
 fn aa_tables_have_expected_values() {

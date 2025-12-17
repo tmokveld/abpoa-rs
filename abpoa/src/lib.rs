@@ -13,7 +13,7 @@ compile_error!(
 use std::slice;
 
 #[cfg(unix)]
-pub use abpoa_sys as sys;
+pub use abpoa_ffi_sys as sys;
 
 #[cfg(unix)]
 pub mod aligner;

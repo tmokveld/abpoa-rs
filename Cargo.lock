@@ -6,7 +6,7 @@ version = 4
 name = "abpoa"
 version = "0.1.0"
 dependencies = [
- "abpoa-sys",
+ "abpoa-ffi-sys",
  "bitflags",
  "libc",
  "rand",
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "abpoa-sys"
+name = "abpoa-ffi-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",

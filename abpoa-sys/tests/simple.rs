@@ -1,4 +1,4 @@
-use abpoa_sys::sys;
+use abpoa_ffi_sys::sys;
 
 #[test]
 fn init_and_free_handles() {
