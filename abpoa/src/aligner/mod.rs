@@ -1,7 +1,7 @@
 //! AbPOA aligner
 //!
 //! Module tries to keep the unsafe FFI contained while exposing methods for
-//! running alignments, updating graphs, and exporting consensus/MSA/GFA outputs
+//! running alignments, updating graphs, and exporting consensus/MSA/GFA outputs.
 
 mod core;
 mod incremental;
@@ -34,11 +34,11 @@ pub struct Aligner {
     raw: NonNull<sys::abpoa_t>,
     params: Parameters,
     graph_tracks_read_ids: bool,
-    // Not Send/Sync: abPOA uses global mutable tables and allocators without locking
+    // Not Send/Sync: abPOA uses global mutable tables and allocators without locking.
     _not_send_sync: PhantomData<Rc<()>>,
 }
 
-/// Collection of sequences plus optional metadata used as input to MSA calls
+/// Collection of sequences plus optional metadata used as input to MSA calls.
 pub struct SequenceBatch<'a> {
     sequences: &'a [&'a [u8]],
     names: Option<&'a [&'a str]>,
@@ -46,7 +46,7 @@ pub struct SequenceBatch<'a> {
 }
 
 impl<'a> SequenceBatch<'a> {
-    /// Construct a batch from raw sequence slices
+    /// Construct a batch from raw sequence slices.
     pub fn from_sequences(sequences: &'a [&'a [u8]]) -> Self {
         Self {
             sequences,
@@ -55,13 +55,13 @@ impl<'a> SequenceBatch<'a> {
         }
     }
 
-    /// Attach per-sequence names (must match the sequence count)
+    /// Attach per-sequence names (must match the sequence count).
     pub fn with_names(mut self, names: &'a [&'a str]) -> Self {
         self.names = Some(names);
         self
     }
 
-    /// Attach per-base quality weights (must match sequence count and lengths)
+    /// Attach per-base quality weights (must match sequence count and lengths).
     pub fn with_quality_weights(mut self, quality_weights: &'a [&'a [i32]]) -> Self {
         self.quality_weights = Some(quality_weights);
         self
@@ -82,7 +82,7 @@ impl<'a> SequenceBatch<'a> {
 
 impl Aligner {
     fn graph_is_empty(&self) -> bool {
-        // Safety: `abg` is owned by the aligner and valid for the lifetime of `self`
+        // Safety: `abg` is owned by the aligner and valid for the lifetime of `self`.
         unsafe {
             let abg = (*self.as_ptr()).abg;
             abg.is_null() || (*abg).node_n <= 2
@@ -90,19 +90,19 @@ impl Aligner {
     }
 
     fn alphabet(&self) -> Alphabet {
-        // Parameters default to DNA, only DNA and amino acids are supported
+        // Parameters default to DNA, only DNA and amino acids are supported.
         self.params.get_alphabet().unwrap()
     }
 
     fn ensure_sequence_count(&mut self, total_reads: i32) -> Result<()> {
         // Safety: `abs` is allocated alongside the aligner; update the total number of reads the
-        // graph accounts for so consensus/MSA generation sizes buffers correctly
+        // graph accounts for so consensus/MSA generation sizes buffers correctly.
         let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };
         if abs_ptr.is_null() {
             return Err(Error::NullPointer("abpoa sequence container was null"));
         }
         // Safety: `abs_ptr` is owned by this aligner. abPOA reallocates its internal arrays
-        // (seq/name/is_rc/etc.) based on `n_seq`
+        // (seq/name/is_rc/etc.) based on `n_seq`.
         let abs = unsafe { abs_ptr.as_mut() }
             .ok_or(Error::NullPointer("abpoa sequence container was null"))?;
         if abs.n_seq < total_reads {
@@ -175,11 +175,11 @@ impl Aligner {
     }
 
     fn graph_mut(&mut self) -> Result<&mut sys::abpoa_graph_t> {
-        // Safety: `abg` is allocated alongside the aligner and lives for `'self`
+        // Safety: `abg` is allocated alongside the aligner and lives for `'self`.
         let abg = unsafe { (*self.as_mut_ptr()).abg };
         let mut abg =
             NonNull::new(abg).ok_or(Error::NullPointer("abpoa graph pointer was null"))?;
-        // Safety: the graph pointer is valid for the duration of the borrow
+        // Safety: the graph pointer is valid for the duration of the borrow.
         Ok(unsafe { abg.as_mut() })
     }
 
@@ -244,7 +244,7 @@ impl Aligner {
 
         let current = graph.node_id_to_msa_rank as *mut libc::c_void;
         let new_ptr = if current.is_null() {
-            // Safety: allocate a buffer sized to at least the graph capacity; abPOA will free it
+            // Safety: allocate a buffer sized to at least the graph capacity. abPOA will free it
             // with `free()` as part of `abpoa_free_graph`.
             (unsafe { libc::calloc(required, std::mem::size_of::<i32>()) }) as *mut i32
         } else {
@@ -266,12 +266,12 @@ impl Aligner {
     }
 
     fn sequence_count(&self) -> Result<i32> {
-        // Safety: `abs` is owned alongside the aligner and valid for the lifetime of `self`
+        // Safety: `abs` is owned alongside the aligner and valid for the lifetime of `self`.
         let abs = unsafe { (*self.as_ptr()).abs };
         if abs.is_null() {
             return Err(Error::NullPointer("abpoa sequence container was null"));
         }
-        // Safety: we only read a single integer field
+        // Safety: we only read a single integer field.
         let count = unsafe { (*abs).n_seq };
         Ok(count.max(0))
     }
@@ -288,7 +288,7 @@ impl Aligner {
 impl Drop for Aligner {
     fn drop(&mut self) {
         // Safety: `raw` came from `abpoa_init` and is exclusively owned here; abPOA expects a
-        // matching `abpoa_free` for each init
+        // matching `abpoa_free` for each init.
         unsafe { sys::abpoa_free(self.raw.as_ptr()) }
     }
 }

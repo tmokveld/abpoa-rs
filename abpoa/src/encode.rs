@@ -1,14 +1,14 @@
-//! Sequence encoding helpers mirroring abPOA's built-in tables
+//! Sequence encoding helpers mirroring abPOA's built-in tables.
 
-/// Supported alphabets for encoding/decoding
+/// Supported alphabets for encoding/decoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alphabet {
     Dna,
     AminoAcid,
 }
 
-/// Encode a DNA sequence (A/C/G/T/U/N) into abPOA's 0-4 integer alphabet
-/// Unknown bases are coerced to `N` (`4`), matching `ab_nt4_table`
+/// Encode a DNA sequence (A/C/G/T/U/N) into abPOA's 0-4 integer alphabet.
+/// Unknown bases are coerced to `N` (`4`), matching `ab_nt4_table`.
 pub fn encode_dna(seq: &[u8]) -> Vec<u8> {
     seq.iter().copied().map(encode_dna_base).collect()
 }

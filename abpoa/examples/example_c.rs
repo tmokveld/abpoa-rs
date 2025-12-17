@@ -1,4 +1,4 @@
-//! Rust port of the upstream `example.c`, showing quality-weighted MSA and graph/consensus outputs
+//! Rust port of the upstream `example.c`, showing quality-weighted MSA and graph/consensus outputs.
 
 use abpoa::{Aligner, Parameters, Result, SequenceBatch, Verbosity};
 

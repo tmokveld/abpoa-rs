@@ -8,14 +8,14 @@ impl Aligner {
     /// Run abPOA's one-shot MSA on a set of sequences and return the configured consensus/MSA output.
     ///
     /// This calls into abPOA `abpoa_msa`, so minimizer seeding, guide-tree
-    /// partitioning, and progressive POA parameters will be used if enabled
+    /// partitioning, and progressive POA parameters will be used if enabled.
     pub fn msa(&mut self, batch: SequenceBatch<'_>) -> Result<MsaResult> {
         self.msa_one_shot_inner(batch, |abc, alphabet| unsafe {
             MsaResult::from_raw(abc, alphabet)
         })
     }
 
-    /// Run abPOA's one-shot MSA on a set of sequences and return encoded consensus/MSA output
+    /// Run abPOA's one-shot MSA on a set of sequences and return encoded consensus/MSA output.
     pub fn msa_encoded(&mut self, batch: SequenceBatch<'_>) -> Result<EncodedMsaResult> {
         self.msa_one_shot_inner(batch, |abc, _| unsafe { EncodedMsaResult::from_raw(abc) })
     }
@@ -87,7 +87,7 @@ impl Aligner {
             (*params_ptr).set_out_gfa(0);
         }
         // Safety: all pointers passed are valid for the duration of the call and match the
-        // configured alphabet, abPOA will not keep them after returning
+        // configured alphabet, abPOA will not keep them after returning.
         let status = unsafe {
             sys::abpoa_msa(
                 self.as_mut_ptr(),
@@ -115,7 +115,7 @@ impl Aligner {
             .unwrap_or(true);
 
         // Store the original sequences and optional names on the aligner for downstream graph
-        // inspection helpers
+        // inspection helpers.
         self.store_batch_in_abs(&batch, 0, n_seq)?;
 
         let abc = unsafe { (*self.as_ptr()).abc };

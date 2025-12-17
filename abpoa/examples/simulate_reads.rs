@@ -1,5 +1,5 @@
 //! Generate two synthetic consensuses, simulate reads from both, mix them, and ask abPOA
-//! to emit two consensus sequences
+//! to emit two consensus sequences.
 
 use abpoa::{Aligner, ConsensusAlgorithm, Parameters, Result, SequenceBatch};
 
@@ -144,7 +144,7 @@ fn make_consensus_b(
                 mutated[..len_b].to_vec()
             } else {
                 // Extend deterministically by cycling the mutated A-derived sequence.
-                // (Keeps B "derived" from A while allowing arbitrary `len_b`.)
+                // (Keeps B "derived" from A while allowing arbitrary `len_b`.).
                 let mut out = Vec::with_capacity(len_b);
                 out.extend_from_slice(&mutated);
                 for i in 0..(len_b - mutated.len()) {

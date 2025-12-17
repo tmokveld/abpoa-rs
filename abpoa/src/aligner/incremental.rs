@@ -7,7 +7,7 @@ use crate::result::{EncodedMsaResult, EncodedMsaView, MsaResult};
 use crate::{Error, Result, sys};
 use std::{path::Path, ptr};
 
-/// Node ids (exclusive) delimiting a subgraph to align against
+/// Node ids (exclusive) delimiting a subgraph to align against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubgraphRange {
     pub beg: NodeId,
@@ -35,16 +35,16 @@ impl Aligner {
         Ok(aligner)
     }
 
-    /// Manually add a node with an already-encoded base to the underlying graph
+    /// Manually add a node with an already-encoded base to the underlying graph.
     pub fn add_node(&mut self, base: u8) -> Result<NodeId> {
         let graph = self.graph_mut()?;
-        // Safety: the graph pointer is owned by this aligner and live for the duration of the call
+        // Safety: the graph pointer is owned by this aligner and live for the duration of the call.
         let id = unsafe { sys::abpoa_add_graph_node(graph, base) };
         Self::invalidate_graph(graph);
         Ok(NodeId(id))
     }
 
-    /// Insert or update a directed edge between two nodes
+    /// Insert or update a directed edge between two nodes.
     pub fn add_edge(
         &mut self,
         from: NodeId,
@@ -64,7 +64,7 @@ impl Aligner {
             ));
         }
 
-        // Safety: graph and node ids are valid
+        // Safety: graph and node ids are valid.
         unsafe {
             sys::abpoa_add_graph_edge(
                 graph,
@@ -83,44 +83,44 @@ impl Aligner {
         Ok(())
     }
 
-    /// Recompute topological indices for all nodes using the existing buffers
+    /// Recompute topological indices for all nodes using the existing buffers.
     pub fn refresh_node_indices(&mut self) -> Result<()> {
         let graph = self.graph_mut()?;
         Self::ensure_index_capacity(graph)?;
 
-        // Safety: index buffers are allocated and sized to at least `node_n`
+        // Safety: index buffers are allocated and sized to at least `node_n`.
         let src = SentinelNode::Source.as_raw();
         let sink = SentinelNode::Sink.as_raw();
         unsafe { sys::abpoa_BFS_set_node_index(graph, src, sink) };
         Ok(())
     }
 
-    /// Recompute remaining path distances from each node to the sink
+    /// Recompute remaining path distances from each node to the sink.
     pub fn refresh_node_remaining(&mut self) -> Result<()> {
         let graph = self.graph_mut()?;
         Self::ensure_remain_capacity(graph)?;
 
-        // Safety: remain buffers are allocated and sized to at least `node_n`
+        // Safety: remain buffers are allocated and sized to at least `node_n`.
         let src = SentinelNode::Source.as_raw();
         let sink = SentinelNode::Sink.as_raw();
         unsafe { sys::abpoa_BFS_set_node_remain(graph, src, sink) };
         Ok(())
     }
 
-    /// Ensure the graph is topologically sorted and dependent buffers are refreshed
+    /// Ensure the graph is topologically sorted and dependent buffers are refreshed.
     pub fn ensure_topological(&mut self) -> Result<()> {
         let params_ptr = self.params.as_mut_ptr()?;
         let graph = self.graph_mut()?;
-        // Safety: abPOA allocates and fills topology buffers when sorting
+        // Safety: abPOA allocates and fills topology buffers when sorting.
         unsafe { sys::abpoa_topological_sort(graph, params_ptr) };
         Ok(())
     }
 
-    /// Restore a previously serialized graph using the path stored in `Parameters::set_incremental_graph_file`
+    /// Restore a previously serialized graph using the path stored in `Parameters::set_incremental_graph_file`.
     pub fn restore_graph(&mut self) -> Result<()> {
         let empty_before = self.graph_is_empty();
         // Safety: abPOA requires `incr_fn` to be set to a valid path; return an error if the
-        // caller forgot to configure it
+        // caller forgot to configure it.
         let params_ptr = self.params.as_mut_ptr()?;
         {
             let raw_params = unsafe { params_ptr.as_ref() }
@@ -147,7 +147,7 @@ impl Aligner {
         Ok(())
     }
 
-    /// Compute the exclusive node ids that bound an included region
+    /// Compute the exclusive node ids that bound an included region.
     pub fn subgraph_nodes(
         &mut self,
         include_begin: NodeId,
@@ -156,7 +156,7 @@ impl Aligner {
         let mut exc_beg = 0;
         let mut exc_end = 0;
 
-        // Safety: aligner and parameters are live; abpoa will write the two exclusive node ids
+        // Safety: aligner and parameters are live; abpoa will write the two exclusive node ids.
         let params_ptr = self.params.as_mut_ptr()?;
         unsafe {
             sys::abpoa_subgraph_nodes(
@@ -175,7 +175,7 @@ impl Aligner {
         })
     }
 
-    /// Align a pre-encoded sequence to the current graph and return the raw alignment result
+    /// Align a pre-encoded sequence to the current graph and return the raw alignment result.
     pub fn align_sequence_raw(&mut self, encoded_seq: &[u8]) -> Result<RawAlignment> {
         if encoded_seq.is_empty() {
             return Err(Error::InvalidInput("cannot align an empty sequence".into()));
@@ -184,7 +184,7 @@ impl Aligner {
         let mut res = RawAlignment::new();
 
         // abPOA returns -1 when the graph is still empty; allow that case so the first sequence
-        // can be added without a pre-existing graph
+        // can be added without a pre-existing graph.
         let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_align_sequence_to_graph(
@@ -208,7 +208,7 @@ impl Aligner {
         Ok(res)
     }
 
-    /// Align a sequence to a specific subgraph and return the raw alignment result
+    /// Align a sequence to a specific subgraph and return the raw alignment result.
     pub fn align_sequence_to_subgraph(
         &mut self,
         range: SubgraphRange,
@@ -278,7 +278,7 @@ impl Aligner {
         self.ensure_sequence_count(total_reads)?;
 
         if weights.is_some() {
-            // Enable quality-weighted consensus for this graph
+            // Enable quality-weighted consensus for this graph.
             self.params.set_use_quality(true);
         }
 
@@ -317,7 +317,7 @@ impl Aligner {
         Ok(())
     }
 
-    /// Add an aligned sequence to the graph using the provided alignment
+    /// Add an aligned sequence to the graph using the provided alignment.
     pub fn add_alignment(
         &mut self,
         encoded_seq: &[u8],
@@ -328,7 +328,7 @@ impl Aligner {
         self.add_alignment_inner(encoded_seq, None, res, read_id, total_reads)
     }
 
-    /// Add an aligned sequence to the graph using per-base quality weights
+    /// Add an aligned sequence to the graph using per-base quality weights.
     fn add_alignment_with_quality(
         &mut self,
         encoded_seq: &[u8],
@@ -381,7 +381,7 @@ impl Aligner {
 
             if let Some(is_rc_ptr) = is_rc_ptr {
                 // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
-                // is within the `total_reads` bound ensured by `ensure_sequence_count`
+                // is within the `total_reads` bound ensured by `ensure_sequence_count`.
                 unsafe {
                     *is_rc_ptr.add(read_id as usize) = 0;
                 }
@@ -469,7 +469,7 @@ impl Aligner {
         Ok(())
     }
 
-    /// Add an aligned sequence to the graph within a subgraph window
+    /// Add an aligned sequence to the graph within a subgraph window.
     pub fn add_subgraph_alignment(
         &mut self,
         range: SubgraphRange,
@@ -529,11 +529,11 @@ impl Aligner {
         Ok(())
     }
 
-    /// Build a graph incrementally from a batch of sequences without returning a result yet
+    /// Build a graph incrementally from a batch of sequences without returning a result yet.
     ///
     /// This aligns each sequence against the current graph in input order. Minimizer seeding,
-    /// guide-tree partitioning, and progressive POA settings are only used by [`msa`] /
-    /// [`msa_encoded`] / [`msa_view_encoded`] and do not affect this incremental API
+    /// guide-tree partitioning, and progressive POA settings are only used by [`Self::msa`] /
+    /// [`Self::msa_encoded`] / [`Self::msa_view_encoded`] and do not affect this incremental API.
     pub fn msa_in_place(&mut self, batch: SequenceBatch<'_>) -> Result<()> {
         let seqs = batch.sequences();
         if seqs.is_empty() {
@@ -560,10 +560,10 @@ impl Aligner {
         Ok(())
     }
 
-    /// Add more sequences to the existing graph, maintaining read ids
+    /// Add more sequences to the existing graph, maintaining read ids.
     ///
-    /// Like [`msa_in_place`], this uses direct sequence-to-graph alignment and ignores minimizer
-    /// seeding or guide-tree parameters
+    /// Like [`Self::msa_in_place`], this uses direct sequence-to-graph alignment and ignores
+    /// minimizer seeding or guide-tree parameters.
     pub fn add_sequences(&mut self, batch: SequenceBatch<'_>) -> Result<()> {
         let new_seqs = batch.sequences();
         if new_seqs.is_empty() {
@@ -589,17 +589,17 @@ impl Aligner {
         Ok(())
     }
 
-    /// Generate consensus and/or MSA output from the current graph
+    /// Generate consensus and/or MSA output from the current graph.
     pub fn finalize_msa(&mut self) -> Result<MsaResult> {
         self.finalize_msa_inner(|abc, alphabet| unsafe { MsaResult::from_raw(abc, alphabet) })
     }
 
-    /// Generate consensus and/or MSA output from the current graph in the raw abPOA alphabet
+    /// Generate consensus and/or MSA output from the current graph in the raw abPOA alphabet.
     pub fn finalize_msa_encoded(&mut self) -> Result<EncodedMsaResult> {
         self.finalize_msa_inner(|abc, _| unsafe { EncodedMsaResult::from_raw(abc) })
     }
 
-    /// Generate consensus and/or MSA output from the current graph as zero-copy encoded views
+    /// Generate consensus and/or MSA output from the current graph as zero-copy encoded views.
     pub fn finalize_msa_view_encoded(&mut self) -> Result<EncodedMsaView<'_>> {
         self.finalize_msa_inner(EncodedMsaView::new)
     }
@@ -627,8 +627,6 @@ impl Aligner {
             ));
         }
 
-        let alphabet = self.alphabet();
-
         let consensus_needs_msa_rank =
             outputs.contains(OutputMode::CONSENSUS) && self.consensus_needs_msa_rank()?;
         if consensus_needs_msa_rank && !self.graph_tracks_read_ids {
@@ -645,10 +643,10 @@ impl Aligner {
 
         let params_ptr = self.params.as_mut_ptr()?;
         if outputs.contains(OutputMode::MSA) {
-            // Safety: aligner and parameters are live; abPOA will populate `abc` with MSA/consensus
+            // Safety: aligner and parameters are live; abPOA will populate `abc` with MSA/consensus.
             unsafe { sys::abpoa_generate_rc_msa(self.as_mut_ptr(), params_ptr) };
         } else {
-            // Safety: aligner and parameters are live; abPOA will populate `abc` with consensus
+            // Safety: aligner and parameters are live; abPOA will populate `abc` with consensus.
             unsafe { sys::abpoa_generate_consensus(self.as_mut_ptr(), params_ptr) };
         }
 
@@ -659,6 +657,6 @@ impl Aligner {
             ));
         }
 
-        Ok(convert(abc, alphabet))
+        Ok(convert(abc, self.alphabet()))
     }
 }

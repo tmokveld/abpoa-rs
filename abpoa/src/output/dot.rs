@@ -1,4 +1,4 @@
-//! GraphViz DOT output for an abPOA partial order graph
+//! GraphViz DOT output for an abPOA partial order graph.
 
 use crate::encode::{Alphabet, decode_aa_code, decode_dna_code};
 use crate::graph::Graph;
@@ -6,7 +6,7 @@ use crate::params::SentinelNode;
 use crate::{Error, Result};
 use std::io::Write;
 
-/// GraphViz rank direction for DOT output
+/// GraphViz rank direction for DOT output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RankDir {
     LeftToRight,
@@ -26,14 +26,14 @@ impl RankDir {
     }
 }
 
-/// How to map abPOA edge weights to GraphViz `penwidth`
+/// How to map abPOA edge weights to GraphViz `penwidth`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EdgePenWidth {
-    /// Mirror upstream `abpoa_dump_pog`: `penwidth = weight + 1`, does not look good for large weights
+    /// Mirror upstream `abpoa_dump_pog`: `penwidth = weight + 1`, does not look good for large weights.
     Weight,
-    /// Scale `weight / max_weight` into `[min, max]`, default
+    /// Scale `weight / max_weight` into `[min, max]`, default.
     ProportionalToMax { min: f32, max: f32 },
-    /// Scale `weight / sum(outgoing_weights)` into `[min, max]`
+    /// Scale `weight / sum(outgoing_weights)` into `[min, max]`.
     ProportionalToOutgoing { min: f32, max: f32 },
 }
 
@@ -61,7 +61,7 @@ impl EdgePenWidth {
     }
 }
 
-/// Which label, if any, to include on each DOT edge
+/// Which label, if any, to include on each DOT edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeLabel {
     None,
@@ -70,19 +70,19 @@ pub enum EdgeLabel {
     ProportionOfOutgoing { precision: usize },
 }
 
-/// Which metadata to include in DOT node labels
+/// Which metadata to include in DOT node labels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeLabel {
-    /// Match upstream `abpoa_dump_pog`: base + topological index
+    /// Match upstream `abpoa_dump_pog`: base + topological index.
     BaseAndTopologicalIndex,
-    /// Base + explicit node id (`id:<node_id>`)
+    /// Base + explicit node id (`id:<node_id>`).
     BaseAndNodeId,
-    /// Base + explicit topological index (`idx:<topo>`) + explicit node id (`id:<node_id>`)
+    /// Base + explicit topological index (`idx:<topo>`) + explicit node id (`id:<node_id>`).
     BaseTopologicalIndexAndNodeId,
 }
 
 /// Rendering settings for [`crate::Aligner::write_pog_to_path`] when using
-/// [`crate::PogWriteOptions::Rust`]
+/// [`crate::PogWriteOptions::Rust`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct PogDotOptions {
     pub rankdir: RankDir,
@@ -121,7 +121,7 @@ impl Default for PogDotOptions {
     }
 }
 
-/// Write a GraphViz DOT view of a partial order graph (POG)
+/// Write a GraphViz DOT view of a partial order graph (POG).
 ///
 /// This mirrors the upstream `abpoa_dump_pog` DOT emission, but does not invoke `dot`
 ///

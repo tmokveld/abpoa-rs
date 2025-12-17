@@ -18,7 +18,7 @@ use std::{
 };
 
 impl Aligner {
-    /// Write consensus sequences in FASTA form to a Rust `Write`
+    /// Write consensus sequences in FASTA form to a Rust `Write`.
     pub fn write_consensus_fasta(&mut self, writer: &mut impl Write) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
@@ -82,7 +82,7 @@ impl Aligner {
         })()
     }
 
-    /// Write consensus sequences in FASTQ form to a Rust `Write`
+    /// Write consensus sequences in FASTQ form to a Rust `Write`.
     pub fn write_consensus_fastq(&mut self, writer: &mut impl Write) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
@@ -170,7 +170,7 @@ impl Aligner {
         })()
     }
 
-    /// Write RC-MSA output (optionally including consensus rows) to a Rust `Write`
+    /// Write RC-MSA output (optionally including consensus rows) to a Rust `Write`.
     pub fn write_msa_fasta(&mut self, writer: &mut impl Write) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
@@ -253,7 +253,7 @@ impl Aligner {
         }
     }
 
-    /// Write GFA output to the given path
+    /// Write GFA output to the given path.
     pub fn write_gfa_to_path<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
@@ -328,9 +328,9 @@ impl Aligner {
         write_result
     }
 
-    /// Write GFA output to a Rust `Write`
+    /// Write GFA output to a Rust `Write`.
     ///
-    /// This is a convenience adapter around [`write_gfa_to_path`] and uses a temporary file
+    /// This is a convenience adapter around [`Self::write_gfa_to_path`] and uses a temporary file.
     pub fn write_gfa(&mut self, writer: &mut impl Write) -> Result<()> {
         if self.graph_is_empty() {
             return Ok(());
@@ -351,19 +351,19 @@ impl Aligner {
         read_result
     }
 
-    /// Write a GraphViz view of the current partial order graph (POG) to `path`
+    /// Write a GraphViz view of the current partial order graph (POG) to `path`.
     ///
     /// Supported extensions:
     /// - `.dot`: write GraphViz DOT
     /// - `.png` / `.pdf`: write an image using GraphViz `dot`
     ///
     /// When writing `.png`/`.pdf`, a DOT file is written next to `path` at `path + ".dot"`
-    /// (mirroring upstream)
+    /// (mirroring upstream).
     ///
     /// `options` can be:
     /// - [`crate::PogDotOptions`] (or `&crate::PogDotOptions`) to use the Rust DOT emitter
     /// - [`PogWriteOptions::Upstream`] to call upstream `abpoa_dump_pog` (uses `system()` and may
-    ///   `exit()` on failure)
+    ///   `exit()` on failure).
     pub fn write_pog_to_path<P: AsRef<Path>>(
         &mut self,
         path: P,
@@ -468,7 +468,7 @@ impl Aligner {
                     (*params_ptr).out_pog = new;
                 }
 
-                // Safety: `self`/`self.params` are valid for the duration of the call
+                // Safety: `self`/`self.params` are valid for the duration of the call.
                 unsafe { sys::abpoa_dump_pog(self.as_mut_ptr(), params_ptr) };
 
                 unsafe {
@@ -510,7 +510,7 @@ fn sequence_name(abs: &sys::abpoa_seq_t, idx: usize) -> Result<String> {
     let kstr = unsafe { abs.name.add(idx).as_ref() }
         .ok_or(Error::NullPointer("abpoa sequence name pointer was null"))?;
     if kstr.l > 0 && !kstr.s.is_null() {
-        // Safety: `s` points to a buffer at least `l` bytes long when `l > 0`
+        // Safety: `s` points to a buffer at least `l` bytes long when `l > 0`.
         let bytes = unsafe { slice::from_raw_parts(kstr.s as *const u8, kstr.l as usize) };
         Ok(String::from_utf8_lossy(bytes).into_owned())
     } else {
@@ -522,7 +522,7 @@ fn sequence_is_rc(abs: &sys::abpoa_seq_t, idx: usize) -> Result<bool> {
     if abs.is_rc.is_null() {
         return Ok(false);
     }
-    // Safety: `is_rc` is sized to `n_seq` by abPOA; `idx` is derived from that bound
+    // Safety: `is_rc` is sized to `n_seq` by abPOA; `idx` is derived from that bound.
     let flag = unsafe { *abs.is_rc.add(idx) };
     Ok(flag != 0)
 }
@@ -539,7 +539,7 @@ fn consensus_read_ids(abc: &sys::abpoa_cons_t, idx: usize) -> Vec<i32> {
     if abc.clu_n_seq.is_null() || abc.clu_read_ids.is_null() {
         return Vec::new();
     }
-    // Safety: read count and pointers are filled by abPOA when consensus is generated
+    // Safety: read count and pointers are filled by abPOA when consensus is generated.
     let count = unsafe { *abc.clu_n_seq.add(idx) }.max(0) as usize;
     if count == 0 {
         return Vec::new();

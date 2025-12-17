@@ -1,4 +1,4 @@
-//! Aligns reads to a selected slice of the POA graph to demonstrate subgraph-restricted alignment
+//! Aligns reads to a selected slice of the POA graph to demonstrate subgraph-restricted alignment.
 
 use abpoa::encode::encode_dna;
 use abpoa::{Aligner, Alphabet, NodeId, Parameters, Result, SentinelNode, SubgraphRange};

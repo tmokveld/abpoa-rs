@@ -1,19 +1,19 @@
-//! Structures representing consensus clusters and MSA output
+//! Structures representing consensus clusters and MSA output.
 
 use crate::encode::{Alphabet, decode_aa, decode_dna};
 use crate::params::NodeId;
 use crate::sys;
 use std::{marker::PhantomData, rc::Rc, slice};
 
-/// Consensus cluster containing a consensus string and per-base metadata
+/// Consensus cluster containing a consensus string and per-base metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cluster {
     pub read_ids: Vec<i32>,
     pub consensus: String,
-    /// Graph node id corresponding to each consensus base (same length as `consensus`)
+    /// Graph node ID corresponding to each consensus base (same length as `consensus`)..
     pub node_ids: Vec<NodeId>,
     pub coverage: Vec<i32>,
-    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`)
+    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`).
     ///
     /// If per-base input qualities are not provided, abPOA derives these scores from the
     /// per-base consensus coverage and the number of reads in the cluster (see upstream
@@ -34,10 +34,10 @@ pub struct MsaResult {
 pub struct EncodedCluster {
     pub read_ids: Vec<i32>,
     pub consensus: Vec<u8>,
-    /// Graph node id corresponding to each consensus base (same length as `consensus`)
+    /// Graph node id corresponding to each consensus base (same length as `consensus`).
     pub node_ids: Vec<NodeId>,
     pub coverage: Vec<i32>,
-    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`)
+    /// FASTQ-encoded quality bytes (Phred+33) for each consensus base (same length as `consensus`).
     ///
     /// If per-base input qualities are not provided, abPOA derives these scores from the
     /// per-base consensus coverage and the number of reads in the cluster (see upstream
@@ -59,12 +59,12 @@ pub struct EncodedMsaResult {
     pub clusters: Vec<EncodedCluster>,
 }
 
-/// Zero-copy borrowed view into abPOA's encoded MSA/consensus buffers
+/// Zero-copy borrowed view into abPOA's encoded MSA/consensus buffers.
 ///
 /// This view borrows the underlying output buffers owned by an [`crate::Aligner`]. It is
 /// invalidated by any subsequent call that regenerates or clears MSA/consensus output (such as
 /// `finalize_msa*`, `msa*`, `reset`, or graph restoration). Rust's borrow checker prevents using
-/// the aligner mutably while a view exists
+/// the aligner mutably while a view exists.
 pub struct EncodedMsaView<'a> {
     abc: *const sys::abpoa_cons_t,
     alphabet: Alphabet,
@@ -227,7 +227,7 @@ impl<'a> EncodedClusterView<'a> {
         self.view.abc()
     }
 
-    /// Read ids for this cluster (may be empty when unavailable)
+    /// Read ids for this cluster (may be empty when unavailable).
     pub fn read_ids(&self) -> &[i32] {
         let Some(abc) = self.abc() else {
             return &[];
@@ -248,7 +248,7 @@ impl<'a> EncodedClusterView<'a> {
         unsafe { slice::from_raw_parts(ids_ptr, count) }
     }
 
-    /// Length of the consensus sequence for this cluster
+    /// Length of the consensus sequence for this cluster.
     pub fn consensus_len(&self) -> usize {
         let Some(abc) = self.abc() else {
             return 0;
@@ -259,7 +259,7 @@ impl<'a> EncodedClusterView<'a> {
         unsafe { *abc.cons_len.add(self.index) }.max(0) as usize
     }
 
-    /// Encoded consensus sequence for this cluster
+    /// Encoded consensus sequence for this cluster.
     pub fn consensus(&self) -> &[u8] {
         let Some(abc) = self.abc() else {
             return &[];
@@ -277,7 +277,7 @@ impl<'a> EncodedClusterView<'a> {
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 
-    /// Graph node ids corresponding to each consensus base (raw `i32` ids)
+    /// Graph node ids corresponding to each consensus base (raw `i32` ids).
     pub fn node_ids_raw(&self) -> &[i32] {
         let Some(abc) = self.abc() else {
             return &[];
@@ -294,7 +294,7 @@ impl<'a> EncodedClusterView<'a> {
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 
-    /// Coverage per consensus base
+    /// Coverage per consensus base.
     pub fn coverage(&self) -> &[i32] {
         let Some(abc) = self.abc() else {
             return &[];
@@ -307,11 +307,11 @@ impl<'a> EncodedClusterView<'a> {
         if ptr.is_null() {
             return &[];
         }
-        // Safety: coverage arrays are allocated by `abpoa_allocate_cons` for each cluster
+        // Safety: coverage arrays are allocated by `abpoa_allocate_cons` for each cluster.
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 
-    /// Raw per-base Phred scores (ASCII codes, Phred+33) for consensus FASTQ output
+    /// Raw per-base Phred scores (ASCII codes, Phred+33) for consensus FASTQ output.
     pub fn phred_scores_raw(&self) -> &[i32] {
         let Some(abc) = self.abc() else {
             return &[];
@@ -324,7 +324,7 @@ impl<'a> EncodedClusterView<'a> {
         if ptr.is_null() {
             return &[];
         }
-        // Safety: phred arrays are allocated by `abpoa_allocate_cons` for each cluster
+        // Safety: phred arrays are allocated by `abpoa_allocate_cons` for each cluster.
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 }
@@ -367,7 +367,7 @@ impl<'a> ExactSizeIterator for EncodedClusters<'a> {
 impl MsaResult {
     /// # Safety
     /// `abc` must point to a valid `abpoa_cons_t` populated by abPOA; the memory must outlive
-    /// this call and remain readable for the duration of the copy into Rust-owned buffers
+    /// this call and remain readable for the duration of the copy into Rust-owned buffers.
     pub(crate) unsafe fn from_raw(abc: *const sys::abpoa_cons_t, alphabet: Alphabet) -> Self {
         let decode_row: fn(&[u8]) -> String = match alphabet {
             Alphabet::Dna => decode_dna,
@@ -395,7 +395,7 @@ impl MsaResult {
 impl EncodedMsaResult {
     /// # Safety
     /// `abc` must point to a valid `abpoa_cons_t` populated by abPOA; the memory must outlive
-    /// this call and remain readable for the duration of the copy into Rust-owned buffers
+    /// this call and remain readable for the duration of the copy into Rust-owned buffers.
     pub(crate) unsafe fn from_raw(abc: *const sys::abpoa_cons_t) -> Self {
         let parsed = unsafe { parse_raw(abc) };
         let msa = parsed.msa;

@@ -1,4 +1,4 @@
-//! Parameter ownership and configuration access to `abpoa_para_t`
+//! Parameter ownership and configuration access to `abpoa_para_t`.
 
 use libc;
 use std::{
@@ -12,7 +12,40 @@ use std::{
 
 use crate::{Error, Result, encode::Alphabet, sys};
 
-/// Wrapper around `abpoa_para_t`
+/// Wrapper around `abpoa_para_t`.
+///
+/// `Parameters` owns abPOA's scoring and algorithm configuration. Construct it with
+/// [`Parameters::new`] (eagerly finalizes settings) or [`Parameters::configure`] (lazy
+/// finalization; settings are finalized on the next FFI call).
+///
+/// ## Defaults
+///
+/// `Parameters::new()` / `Parameters::configure()` start from the vendored abPOA defaults with a
+/// few wrapper-level tweaks. The effective defaults are:
+///
+/// - Alphabet: [`Alphabet::Dna`] (`m = 5`).
+/// - Outputs: [`OutputMode::CONSENSUS`] + [`OutputMode::MSA`].
+/// - Read ids: enabled (`set_use_read_ids(true)`).
+/// - Alignment mode: [`AlignMode::Global`].
+/// - Scoring: `Scoring::convex(2, 4, 4, 2, 24, 1)` (match, mismatch, gap_open1, gap_ext1,
+///   second_gap_open, second_gap_extend).
+/// - Adaptive band extras: `set_band(10, 0.01)`.
+/// - Z-drop / end bonus: disabled (`None`, stored as `-1` in abPOA).
+/// - Minimizer seeding: disabled (`set_disable_seeding(true)`), with `k=19`, `w=10`, `min_w=500`.
+/// - Progressive POA / guide tree: disabled (`set_progressive_poa(false)`).
+/// - Input sorting: disabled (`set_sort_input_seq(false)`; deprecated/no effect in Rust APIs).
+/// - Ambiguous strand handling: disabled (`set_ambiguous_strand(false)`).
+/// - Gap placement: minimap2-like left-most (`set_gap_on_right(false)`, `set_gap_at_end(false)`).
+/// - Sub-alignment: disabled (`set_sub_alignment(false)`).
+/// - Node-coverage path scoring: disabled (`set_inc_path_score(false)`).
+/// - Quality-weighted scoring: disabled (`set_use_quality(false)`).
+/// - Consensus: [`ConsensusAlgorithm::HeaviestBundle`], `max_n_cons = 1`, `min_freq = 0.25`.
+/// - Verbosity: [`Verbosity::None`].
+/// - Score matrix file / custom matrix / incremental graph file: unset.
+///
+/// Note: upstream abPOA defaults to MSA output disabled and `use_read_ids = false`. This wrapper
+/// enables both by default so methods like [`crate::Aligner::msa`] can return per-read rows, and so
+/// MSA/GFA/multi-consensus outputs can be enabled without rebuilding the graph.
 pub struct Parameters {
     raw: NonNull<sys::abpoa_para_t>,
     custom_matrix: Option<CustomMatrix>,
@@ -44,25 +77,25 @@ impl Default for OutputMode {
 }
 
 impl Parameters {
-    /// Allocate a new parameter object with the default abPOA configuration
+    /// Allocate a new parameter object with the default abPOA configuration.
     pub fn new() -> Result<Self> {
         let mut params = Self::allocate()?;
         params.finalize()?;
         Ok(params)
     }
 
-    /// Start configuring a parameter object in-place
+    /// Start configuring a parameter object in-place.
     ///
     /// This is equivalent to `Parameters::new()` but does not eagerly run finalization,
-    /// changes are finalized automatically on the next FFI call
+    /// changes are finalized automatically on the next FFI call.
     pub fn configure() -> Result<Self> {
         Self::allocate()
     }
 
-    /// Allocate a new parameter object
+    /// Allocate a new parameter object.
     fn allocate() -> Result<Self> {
         // Safety: calls into the C API to allocate a parameter object; abPOA owns the allocation
-        // layout and expects `abpoa_free_para` to release it
+        // layout and expects `abpoa_free_para` to release it.
         let raw = unsafe { sys::abpoa_init_para() };
         let raw = NonNull::new(raw).ok_or(Error::NullPointer("abpoa_init_para returned null"))?;
 
@@ -166,7 +199,7 @@ impl Parameters {
         Ok(())
     }
 
-    /// Configure the alphabet used for encoding sequences
+    /// Configure the alphabet used for encoding sequences.
     pub fn set_alphabet(&mut self, alphabet: Alphabet) -> Result<&mut Self> {
         let m = alphabet_size(alphabet);
 
@@ -210,9 +243,9 @@ impl Parameters {
         Ok(())
     }
 
-    /// Current alphabet, if it matches a supported encoding
+    /// Current alphabet, if it matches a supported encoding.
     pub fn get_alphabet(&self) -> Option<Alphabet> {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         let raw = unsafe { self.raw.as_ref() };
         if raw.m == alphabet_size(self.alphabet) {
             Some(self.alphabet)
@@ -223,7 +256,7 @@ impl Parameters {
 
     /// Set whether quality-weighted scoring is enabled.
     pub fn set_use_quality(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_use_qv(enabled as u8);
         }
@@ -231,7 +264,7 @@ impl Parameters {
     }
 
     pub(crate) fn set_outputs_for_call(&mut self, outputs: OutputMode) {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.set_out_cons(outputs.contains(OutputMode::CONSENSUS) as u8);
@@ -239,14 +272,14 @@ impl Parameters {
         }
     }
 
-    /// Enable or disable tracking read ids in the underlying graph
+    /// Enable or disable tracking read ids in the underlying graph.
     ///
     /// Read ids are required for:
-    /// - MSA output and GFA output
-    /// - consensus clustering (`max_n_cons > 1` or [`ConsensusAlgorithm::MostFrequent`])
+    /// - MSA output and GFA output.
+    /// - consensus clustering (`max_n_cons > 1` or [`ConsensusAlgorithm::MostFrequent`]).
     ///
     /// If read ids are disabled while requesting any of the above, the next FFI call will fail
-    /// with [`Error::InvalidInput`]
+    /// with [`Error::InvalidInput`].
     pub fn set_use_read_ids(&mut self, enabled: bool) -> &mut Self {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
         unsafe {
@@ -256,11 +289,11 @@ impl Parameters {
         self
     }
 
-    /// Configure minimizer seeding parameters and enable seeding
+    /// Configure minimizer seeding parameters and enable seeding.
     ///
-    /// - `k`: minimizer k-mer size
-    /// - `w`: minimizer window size (one minimizer picked per `w` consecutive k-mers)
-    /// - `min_w`: minimum POA window length when partitioning by minimizer anchors
+    /// - `k`: minimizer k-mer size.
+    /// - `w`: minimizer window size (one minimizer picked per `w` consecutive k-mers).
+    /// - `min_w`: minimum POA window length when partitioning by minimizer anchors.
     pub fn set_minimizer_seeding(&mut self, k: i32, w: i32, min_w: i32) -> Result<&mut Self> {
         if k <= 0 || w <= 0 || min_w < 0 {
             return Err(Error::InvalidInput(
@@ -268,7 +301,7 @@ impl Parameters {
             ));
         }
 
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.k = k;
@@ -281,9 +314,9 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Disable or enable minimizer seeding
+    /// Disable or enable minimizer seeding.
     pub fn set_disable_seeding(&mut self, disable: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_disable_seeding(disable as u8);
         }
@@ -291,9 +324,9 @@ impl Parameters {
         self
     }
 
-    /// Enable progressive partial-order alignment
+    /// Enable progressive partial-order alignment.
     pub fn set_progressive_poa(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_progressive_poa(enabled as u8);
         }
@@ -301,9 +334,9 @@ impl Parameters {
         self
     }
 
-    /// Adjust path scoring to factor in node coverage
+    /// Adjust path scoring to factor in node coverage.
     pub fn set_inc_path_score(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().inc_path_score = enabled as i32;
         }
@@ -311,9 +344,9 @@ impl Parameters {
         self
     }
 
-    /// Enable subgraph-aware alignment and consensus counting
+    /// Enable subgraph-aware alignment and consensus counting.
     pub fn set_sub_alignment(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_sub_aln(enabled as u8);
         }
@@ -321,29 +354,9 @@ impl Parameters {
         self
     }
 
-    /// Sort input reads by length before alignment
-    ///
-    /// Deprecated: upstream abPOA only applies this when reading sequences from a file
-    /// (`abpoa_msa1`), which this crate does not expose. It has no effect on
-    /// [`crate::Aligner::msa`], [`crate::Aligner::msa_in_place`], or [`crate::Aligner::add_sequences`]
-    ///
-    /// Sort your input sequences yourself before calling alignment methods
-    #[deprecated(
-        since = "0.1.0",
-        note = "No effect in the Rust APIs; upstream only applies this in its file-reading path (abpoa_msa1), which is not exposed. Sort inputs yourself."
-    )]
-    pub fn set_sort_input_seq(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
-        unsafe {
-            self.raw.as_mut().sort_input_seq = enabled as i32;
-        }
-        self.mark_dirty();
-        self
-    }
-
-    /// Allow abPOA to try the reverse complement when the forward strand scores poorly
+    /// Allow abPOA to try the reverse complement when the forward strand scores poorly.
     pub fn set_ambiguous_strand(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_amb_strand(enabled as u8);
         }
@@ -351,9 +364,9 @@ impl Parameters {
         self
     }
 
-    /// When ambiguous, place gaps on the right-most position (wfa2-like)
+    /// When ambiguous, place gaps on the right-most position.
     pub fn set_gap_on_right(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_put_gap_on_right(enabled as u8);
         }
@@ -361,9 +374,9 @@ impl Parameters {
         self
     }
 
-    /// Push gap placement toward the end of the alignment
+    /// Push gap placement toward the end of the alignment.
     pub fn set_gap_at_end(&mut self, enabled: bool) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().set_put_gap_at_end(enabled as u8);
         }
@@ -371,9 +384,9 @@ impl Parameters {
         self
     }
 
-    /// Set the alignment mode (global/local/extend)
+    /// Set the alignment mode (global/local/extend).
     pub fn set_align_mode(&mut self, mode: AlignMode) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().align_mode = mode.as_raw();
         }
@@ -381,11 +394,11 @@ impl Parameters {
         self
     }
 
-    /// Set the scoring scheme for the alignment
+    /// Set the scoring scheme for the alignment.
     pub fn set_scoring_scheme(&mut self, scoring: Scoring) -> Result<&mut Self> {
         scoring.validate()?;
 
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.match_ = scoring.match_score;
@@ -424,9 +437,9 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Configure adaptive band parameters
+    /// Configure adaptive band parameters.
     pub fn set_band(&mut self, extra_b: i32, extra_f: f32) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.wb = extra_b;
@@ -450,7 +463,7 @@ impl Parameters {
             }
         };
 
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().zdrop = zdrop;
         }
@@ -472,7 +485,7 @@ impl Parameters {
             }
         };
 
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().end_bonus = end_bonus;
         }
@@ -480,9 +493,9 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Configure which outputs abPOA should generate when asked to finalize
+    /// Configure which outputs abPOA should generate when asked to finalize.
     pub fn set_outputs(&mut self, outputs: OutputMode) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.set_out_cons(outputs.contains(OutputMode::CONSENSUS) as u8);
@@ -492,9 +505,9 @@ impl Parameters {
         self
     }
 
-    /// Current configured outputs
+    /// Current configured outputs.
     pub fn outputs(&self) -> OutputMode {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         let raw = unsafe { self.raw.as_ref() };
         let mut output = OutputMode::empty();
         output.set(OutputMode::CONSENSUS, raw.out_cons() != 0);
@@ -502,13 +515,13 @@ impl Parameters {
         output
     }
 
-    /// Maximum number of consensus sequences configured for this parameter set
+    /// Maximum number of consensus sequences configured for this parameter set.
     pub fn max_consensus(&self) -> i32 {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe { self.raw.as_ref() }.max_n_cons
     }
 
-    /// Set the maximum number of consensus sequences to emit
+    /// Set the maximum number of consensus sequences to emit.
     pub fn set_max_consensus(&mut self, max_n_cons: i32) -> Result<&mut Self> {
         if max_n_cons < 1 {
             return Err(Error::InvalidInput(
@@ -524,7 +537,7 @@ impl Parameters {
                 ));
             }
         }
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().max_n_cons = max_n_cons;
         }
@@ -532,14 +545,14 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Configure the minimum cluster frequency threshold
+    /// Configure the minimum cluster frequency threshold.
     pub fn set_min_cluster_freq(&mut self, min_freq: f64) -> Result<&mut Self> {
         if !(0.0..=1.0).contains(&min_freq) {
             return Err(Error::InvalidInput(
                 "min_freq must be between 0.0 and 1.0 (inclusive)".into(),
             ));
         }
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().min_freq = min_freq;
         }
@@ -547,15 +560,15 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Configure consensus calling strategy
+    /// Configure consensus calling strategy.
     ///
     /// - `HeaviestBundle` walks the graph using edge weights (quality scores if
-    ///   `set_use_quality(true)` was set)
+    ///   `set_use_quality(true)` was set).
     /// - `MostFrequent` performs per-column majority voting, respecting
-    ///   `set_sub_alignment(true)` to count spanning reads
+    ///   `set_sub_alignment(true)` to count spanning reads.
     ///
     /// `max_n_cons` and `min_freq` control clustering when you want multiple consensus
-    /// sequences and apply to both algorithms
+    /// sequences and apply to both algorithms.
     pub fn set_consensus(
         &mut self,
         alg: ConsensusAlgorithm,
@@ -571,7 +584,7 @@ impl Parameters {
                 ));
             }
         }
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             let raw = self.raw.as_mut();
             raw.cons_algrm = alg.as_raw();
@@ -582,9 +595,9 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Control verbosity level
+    /// Control verbosity level.
     pub fn set_verbosity(&mut self, level: Verbosity) -> &mut Self {
-        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
             self.raw.as_mut().verbose = level.as_raw();
         }
@@ -609,7 +622,7 @@ impl Parameters {
         }
     }
 
-    /// Load a scoring matrix from a file and use it instead of match/mismatch scores
+    /// Load a scoring matrix from a file and use it instead of match/mismatch scores.
     pub fn set_score_matrix_file<P: AsRef<Path>>(&mut self, path: P) -> Result<&mut Self> {
         let path = path.as_ref().to_str().ok_or(Error::InvalidInput(
             "score matrix path must be valid UTF-8".into(),
@@ -640,7 +653,7 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Provide an in-memory scoring matrix, overrides the matrix generated in `finalize`
+    /// Provide an in-memory scoring matrix, overrides the matrix generated in `finalize`.
     pub fn set_custom_matrix(&mut self, m: i32, matrix: &[i32]) -> Result<&mut Self> {
         if m <= 0 {
             return Err(Error::InvalidInput(
@@ -694,7 +707,7 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Provide a path to an existing graph for incremental alignment/restoration
+    /// Provide a path to an existing graph for incremental alignment/restoration.
     pub fn set_incremental_graph_file<P: AsRef<Path>>(&mut self, path: P) -> Result<&mut Self> {
         let path = path.as_ref().to_str().ok_or(Error::InvalidInput(
             "incremental graph path must be valid UTF-8".into(),
@@ -704,7 +717,7 @@ impl Parameters {
         })?;
 
         // Safety: `raw` is uniquely owned; replace any previous path to avoid leaking C-allocated
-        // storage
+        // storage.
         unsafe {
             let raw = self.raw.as_mut();
             if !raw.incr_fn.is_null() {
@@ -723,10 +736,10 @@ impl Parameters {
         Ok(self)
     }
 
-    /// Clear any configured incremental graph path
+    /// Clear any configured incremental graph path.
     pub fn clear_incremental_graph(&mut self) -> &mut Self {
         // Safety: `raw` is uniquely owned; freeing here avoids later double frees because we set
-        // the pointer back to null
+        // the pointer back to null.
         unsafe {
             let raw = self.raw.as_mut();
             if !raw.incr_fn.is_null() {
@@ -742,7 +755,7 @@ impl Parameters {
 impl Drop for Parameters {
     fn drop(&mut self) {
         // Safety: `raw` came from `abpoa_init_para` and is exclusively owned here; abPOA expects a
-        // matching `abpoa_free_para` for each init
+        // matching `abpoa_free_para` for each init.
         unsafe { sys::abpoa_free_para(self.raw.as_ptr()) }
     }
 }
@@ -777,18 +790,18 @@ fn alphabet_size(alphabet: Alphabet) -> i32 {
 /// Verbosity level for abPOA's internal logging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
-    /// No logging
+    /// No logging.
     None,
-    /// Informational logging
+    /// Informational logging.
     Info,
-    /// Debug loggin
+    /// Debug logging.
     Debug,
-    /// Very verbose debug logging
+    /// Very verbose debug logging.
     LongDebug,
 }
 
 impl Verbosity {
-    /// Convert to the raw abPOA `verbose` integer value
+    /// Convert to the raw abPOA `verbose` integer value.
     pub fn as_raw(self) -> i32 {
         match self {
             Verbosity::None => sys::ABPOA_NONE_VERBOSE as i32,
@@ -798,7 +811,7 @@ impl Verbosity {
         }
     }
 
-    /// Convert from a raw abPOA `verbose` integer value
+    /// Convert from a raw abPOA `verbose` integer value.
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_NONE_VERBOSE as i32 => Some(Verbosity::None),
@@ -810,19 +823,19 @@ impl Verbosity {
     }
 }
 
-/// Alignment mode used by abPOA
+/// Alignment mode used by abPOA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlignMode {
-    /// Global (Needleman–Wunsch-like) alignment
+    /// Global (Needleman–Wunsch-like) alignment.
     Global,
-    /// Local (Smith–Waterman-like) alignment
+    /// Local (Smith–Waterman-like) alignment.
     Local,
-    /// Extension alignment
+    /// Extension alignment.
     Extend,
 }
 
 impl AlignMode {
-    /// Convert to the raw abPOA `align_mode` integer value
+    /// Convert to the raw abPOA `align_mode` integer value.
     pub fn as_raw(self) -> i32 {
         match self {
             AlignMode::Global => sys::ABPOA_GLOBAL_MODE as i32,
@@ -831,7 +844,7 @@ impl AlignMode {
         }
     }
 
-    /// Convert from a raw abPOA `align_mode` integer value
+    /// Convert from a raw abPOA `align_mode` integer value.
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_GLOBAL_MODE as i32 => Some(AlignMode::Global),
@@ -842,19 +855,19 @@ impl AlignMode {
     }
 }
 
-/// Gap penalty model used by abPOA
+/// Gap penalty model used by abPOA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GapMode {
-    /// Linear gap penalty
+    /// Linear gap penalty.
     Linear,
-    /// Affine gap penalty
+    /// Affine gap penalty.
     Affine,
-    /// Convex gap penalty
+    /// Convex gap penalty.
     Convex,
 }
 
 impl GapMode {
-    /// Convert to the raw abPOA `gap_mode` integer value
+    /// Convert to the raw abPOA `gap_mode` integer value.
     pub fn as_raw(self) -> i32 {
         match self {
             GapMode::Linear => sys::ABPOA_LINEAR_GAP as i32,
@@ -863,7 +876,7 @@ impl GapMode {
         }
     }
 
-    /// Convert from a raw abPOA `gap_mode` integer value
+    /// Convert from a raw abPOA `gap_mode` integer value.
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_LINEAR_GAP as i32 => Some(GapMode::Linear),
@@ -874,7 +887,7 @@ impl GapMode {
     }
 }
 
-/// Gap penalty configuration to pair with substitution scores
+/// Gap penalty configuration to pair with substitution scores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GapPenalty {
     Linear {
@@ -902,23 +915,23 @@ impl GapPenalty {
     }
 }
 
-/// Scoring scheme for pairwise alignment
+/// Scoring scheme for pairwise alignment.
 ///
 /// `match_score` is an additive score for matches (must be non-negative). `mismatch` and gap
 /// penalties are positive values representing the *magnitude* of the penalty (abPOA applies the
-/// sign internally)
+/// sign internally).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Scoring {
-    /// Score for a match
+    /// Score for a match.
     pub match_score: i32,
-    /// Penalty for a mismatch (positive magnitude)
+    /// Penalty for a mismatch (positive magnitude).
     pub mismatch: i32,
-    /// Gap penalty configuration
+    /// Gap penalty configuration.
     pub gaps: GapPenalty,
 }
 
 impl Scoring {
-    /// Linear gap model
+    /// Linear gap model.
     pub fn linear(match_score: i32, mismatch: i32, gap: i32) -> Self {
         Self {
             match_score,
@@ -927,7 +940,7 @@ impl Scoring {
         }
     }
 
-    /// Affine gap model
+    /// Affine gap model.
     pub fn affine(match_score: i32, mismatch: i32, gap_open: i32, gap_extend: i32) -> Self {
         Self {
             match_score,
@@ -939,7 +952,7 @@ impl Scoring {
         }
     }
 
-    /// Convex gap model
+    /// Convex gap model.
     pub fn convex(
         match_score: i32,
         mismatch: i32,
@@ -1012,17 +1025,17 @@ impl Scoring {
     }
 }
 
-/// Consensus calling algorithm used by abPOA
+/// Consensus calling algorithm used by abPOA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsensusAlgorithm {
-    /// Heaviest-bundle (edge-weight based) consensus
+    /// Heaviest-bundle (edge-weight based) consensus.
     HeaviestBundle,
-    /// Most-frequent (per-column voting) consensus
+    /// Most-frequent (per-column voting) consensus.
     MostFrequent,
 }
 
 impl ConsensusAlgorithm {
-    /// Convert to the raw abPOA `cons_algrm` integer value
+    /// Convert to the raw abPOA `cons_algrm` integer value.
     pub fn as_raw(self) -> i32 {
         match self {
             ConsensusAlgorithm::HeaviestBundle => sys::ABPOA_HB as i32,
@@ -1030,7 +1043,7 @@ impl ConsensusAlgorithm {
         }
     }
 
-    /// Convert from a raw abPOA `cons_algrm` integer value
+    /// Convert from a raw abPOA `cons_algrm` integer value.
     pub fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_HB as i32 => Some(ConsensusAlgorithm::HeaviestBundle),
@@ -1040,11 +1053,11 @@ impl ConsensusAlgorithm {
     }
 }
 
-/// Newtype for graph node identifiers in abPOA
+/// Newtype for graph node identifiers in abPOA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(pub i32);
 
-/// Sentinel node identifiers reserved by abPOA (source and sink)
+/// Sentinel node identifiers reserved by abPOA (source and sink).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SentinelNode {
     Source,
@@ -1052,7 +1065,7 @@ pub enum SentinelNode {
 }
 
 impl SentinelNode {
-    /// Raw node id value reserved by abPOA.
+    /// Raw node ID value reserved by abPOA.
     pub const fn as_raw(self) -> i32 {
         match self {
             SentinelNode::Source => sys::ABPOA_SRC_NODE_ID as i32,
@@ -1065,7 +1078,7 @@ impl SentinelNode {
         NodeId(self.as_raw())
     }
 
-    /// Convert from a raw abPOA node id.
+    /// Convert from a raw abPOA node ID.
     pub const fn from_raw(value: i32) -> Option<Self> {
         match value {
             v if v == sys::ABPOA_SRC_NODE_ID as i32 => Some(SentinelNode::Source),
@@ -1162,14 +1175,12 @@ mod tests {
             .set_progressive_poa(true)
             .set_inc_path_score(true)
             .set_sub_alignment(true)
-            .set_sort_input_seq(true)
             .set_gap_on_right(true)
             .set_gap_at_end(true);
         let raw = unsafe { params.raw.as_ref() };
         assert_eq!(raw.progressive_poa(), 1);
         assert_eq!(raw.inc_path_score, 1);
         assert_eq!(raw.sub_aln(), 1);
-        assert_eq!(raw.sort_input_seq, 1);
         assert_eq!(raw.put_gap_on_right(), 1);
         assert_eq!(raw.put_gap_at_end(), 1);
 

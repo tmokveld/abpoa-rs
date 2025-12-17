@@ -5,7 +5,7 @@ use crate::{Error, Result, sys};
 use libc;
 use std::{marker::PhantomData, ptr, rc::Rc, slice};
 
-/// CIGAR operations emitted by abPOA
+/// CIGAR operations emitted by abPOA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CigarOp {
     Match,
@@ -29,7 +29,7 @@ impl CigarOp {
         }
     }
 
-    /// Single-letter CIGAR code for this operation
+    /// Single-letter CIGAR code for this operation.
     pub fn as_char(self) -> char {
         match self {
             CigarOp::Match => 'M',
@@ -42,23 +42,23 @@ impl CigarOp {
     }
 }
 
-/// Decoded representation of a single abPOA graph CIGAR entry
+/// Decoded representation of a single abPOA graph CIGAR entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphCigarOp {
-    /// Graph node aligned to a query position (match or mismatch)
+    /// Graph node aligned to a query position (match or mismatch).
     Aligned {
         op: CigarOp,
         node_id: NodeId,
         query_index: usize,
     },
-    /// Graph node skipped from the query
+    /// Graph node skipped from the query.
     Deletion { node_id: NodeId, len: u32 },
-    /// Query-only run (insertion or clipping) ending at `end` with length `len`
+    /// Query-only run (insertion or clipping) ending at `end` with length `len`.
     QueryRun { op: CigarOp, end: usize, len: u32 },
 }
 
 impl GraphCigarOp {
-    /// Length in bases that this operation consumes on the query
+    /// Length in bases that this operation consumes on the query.
     pub fn query_len(&self) -> usize {
         match self {
             GraphCigarOp::Aligned { .. } => 1,
@@ -67,7 +67,7 @@ impl GraphCigarOp {
         }
     }
 
-    /// CIGAR opcode for this entry
+    /// CIGAR opcode for this entry.
     pub fn op(&self) -> CigarOp {
         match self {
             GraphCigarOp::Aligned { op, .. } => *op,
@@ -76,7 +76,7 @@ impl GraphCigarOp {
         }
     }
 
-    /// Query span covered by this operation, if any
+    /// Query span covered by this operation, if any.
     pub fn query_range(&self) -> Option<std::ops::RangeInclusive<usize>> {
         match self {
             GraphCigarOp::Aligned { query_index, .. } => Some(*query_index..=*query_index),
@@ -90,7 +90,7 @@ impl GraphCigarOp {
     }
 }
 
-/// Iterator over decoded graph CIGAR entries
+/// Iterator over decoded graph CIGAR entries.
 pub struct GraphCigar<'a> {
     entries: std::slice::Iter<'a, u64>,
 }
@@ -132,10 +132,10 @@ impl Iterator for GraphCigar<'_> {
     }
 }
 
-/// Low-level alignment result that owns the C-allocated graph cigar
+/// Low-level alignment result that owns the C-allocated graph cigar.
 pub struct RawAlignment {
     res: sys::abpoa_res_t,
-    // Not Send/Sync: shares upstream global buffers with other abPOA calls
+    // Not Send/Sync: shares upstream global buffers with other abPOA calls.
     _not_send_sync: PhantomData<Rc<()>>,
 }
 
@@ -166,41 +166,41 @@ impl RawAlignment {
         self.res
     }
 
-    /// Number of cigar operations produced by the alignment
+    /// Number of cigar operations produced by the alignment.
     pub fn cigar_len(&self) -> i32 {
         self.res.n_cigar
     }
 
-    /// Alignment score reported by abPOA
+    /// Alignment score reported by abPOA.
     pub fn best_score(&self) -> i32 {
         self.res.best_score
     }
 
-    /// Number of query bases that participated in the alignment
+    /// Number of query bases that participated in the alignment.
     pub fn aligned_bases(&self) -> i32 {
         self.res.n_aln_bases
     }
 
-    /// Number of exact matches reported by abPOA
+    /// Number of exact matches reported by abPOA.
     pub fn matched_bases(&self) -> i32 {
         self.res.n_matched_bases
     }
 
-    /// Iterate over the decoded graph CIGAR for this alignment
+    /// Iterate over the decoded graph CIGAR for this alignment.
     pub fn cigar(&self) -> GraphCigar<'_> {
         let entries = if self.res.n_cigar <= 0 || self.res.graph_cigar.is_null() {
             &[]
         } else {
-            // Safety: `graph_cigar` is allocated and populated by abPOA when `n_cigar > 0`
+            // Safety: `graph_cigar` is allocated and populated by abPOA when `n_cigar > 0`.
             unsafe { slice::from_raw_parts(self.res.graph_cigar, self.res.n_cigar as usize) }
         };
         GraphCigar::new(entries)
     }
 
-    /// Decode the graph CIGAR into a human-readable three-line alignment
+    /// Decode the graph CIGAR into a human-readable three-line alignment.
     ///
     /// `query` must be encoded with the same alphabet used to configure the aligner; a
-    /// `Graph` view can be borrowed via [`crate::Aligner::graph`] for use here
+    /// `Graph` view can be borrowed via [`crate::Aligner::graph`] for use here.
     pub fn format_alignment(
         &self,
         graph: &Graph<'_>,
@@ -259,7 +259,7 @@ impl RawAlignment {
 impl Drop for RawAlignment {
     fn drop(&mut self) {
         // Safety: `graph_cigar` is allocated by abPOA when `n_cigar > 0`; free with libc to
-        // mirror the C allocation and avoid leaking between calls
+        // mirror the C allocation and avoid leaking between calls.
         if self.res.n_cigar > 0 && !self.res.graph_cigar.is_null() {
             unsafe { libc::free(self.res.graph_cigar as *mut libc::c_void) };
             self.res.graph_cigar = ptr::null_mut();

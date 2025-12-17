@@ -74,24 +74,24 @@ pub enum Error {
 /// Convenience alias for results returned by this crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Shared view of abPOA's precomputed integer log2 table for 16-bit values
+/// Shared view of abPOA's precomputed integer log2 table for 16-bit values.
 #[cfg(unix)]
 pub fn log_table_65536() -> &'static [u8] {
     runtime::ensure_output_tables();
     // Safety: `AB_LOG_TABLE_65536` points to static storage sized to 2^16 entries and lives
-    // for the duration of the process
+    // for the duration of the process.
     unsafe {
         let ptr = sys::AB_LOG_TABLE_65536.as_ptr();
         slice::from_raw_parts(ptr, 65_536)
     }
 }
 
-/// Shared view of abPOA's precomputed bit-count table for 16-bit values
+/// Shared view of abPOA's precomputed bit-count table for 16-bit values.
 #[cfg(unix)]
 pub fn bit_table_16() -> &'static [u8] {
     runtime::ensure_output_tables();
     // Safety: `AB_BIT_TABLE_16` points to static storage sized to 2^16 entries and lives
-    // for the duration of the process
+    // for the duration of the process.
     unsafe {
         let ptr = sys::AB_BIT_TABLE_16.as_ptr();
         slice::from_raw_parts(ptr, 65_536)

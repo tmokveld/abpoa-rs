@@ -1,4 +1,4 @@
-//! Aligns sequences in multiple passes to show how the POA graph grows before generating a final MSA
+//! Aligns sequences in multiple passes to show how the POA graph grows before generating a final MSA.
 
 use abpoa::{Aligner, Parameters, Result, SequenceBatch};
 

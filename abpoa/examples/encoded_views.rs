@@ -1,4 +1,4 @@
-//! Demonstrate zero-copy encoded output views (`EncodedMsaView` / `EncodedMsaRows` / `EncodedClusterView`)
+//! Demonstrate zero-copy encoded output views (`EncodedMsaView` / `EncodedMsaRows` / `EncodedClusterView`).
 
 use abpoa::{Aligner, EncodedClusterView, EncodedMsaRows, Parameters, SequenceBatch, encode};
 

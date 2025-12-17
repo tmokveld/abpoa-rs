@@ -1,10 +1,10 @@
-//! Read-only view of the underlying partial order graph
+//! Read-only view of the underlying partial order graph.
 
 use crate::params::NodeId;
 use crate::{Error, Result, sys};
 use std::{fmt, marker::PhantomData, ptr::NonNull, rc::Rc, slice};
 
-/// View of the metadata and connectivity of a single node
+/// View of the metadata and connectivity of a single node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeRef {
     pub id: NodeId,
@@ -15,7 +15,7 @@ pub struct NodeRef {
     pub n_span_read: i32,
 }
 
-/// Borrowed view of the metadata and connectivity of a single node
+/// Borrowed view of the metadata and connectivity of a single node.
 ///
 /// Unlike [`NodeRef`], this view borrows edge arrays from the underlying graph without
 /// allocating.
@@ -31,12 +31,12 @@ pub struct NodeView<'a> {
     pub n_span_read: i32,
 }
 
-/// Borrowed view into `abpoa_graph_t` tied to an `Aligner` borrow
+/// Borrowed view into `abpoa_graph_t` tied to an `Aligner` borrow.
 pub struct Graph<'a> {
     graph: NonNull<sys::abpoa_graph_t>,
     seqs: NonNull<sys::abpoa_seq_t>,
     _owner: PhantomData<&'a sys::abpoa_t>,
-    // Not Send/Sync: abPOA relies on global mutable tables without synchronization
+    // Not Send/Sync: abPOA relies on global mutable tables without synchronization.
     _not_send_sync: PhantomData<Rc<()>>,
 }
 
@@ -54,31 +54,31 @@ impl<'a> Graph<'a> {
         })
     }
 
-    /// Number of nodes present in the graph (+source/sink sentinels)
+    /// Number of nodes present in the graph (+source/sink sentinels).
     pub fn node_count(&self) -> usize {
-        // Safety: the graph pointer is valid for the lifetime of this view
+        // Safety: the graph pointer is valid for the lifetime of this view.
         let n = unsafe { (*self.graph.as_ptr()).node_n };
         n.max(0) as usize
     }
 
-    /// Whether the graph has only sentinel nodes (+no aligned bases)
+    /// Whether the graph has only sentinel nodes (+no aligned bases).
     pub fn is_empty(&self) -> bool {
         self.node_count() <= 2
     }
 
-    /// Number of sequences recorded in the graph
+    /// Number of sequences recorded in the graph.
     pub fn sequence_count(&self) -> usize {
-        // Safety: `n_seq` is owned by the aligner and valid for the lifetime of `self`
+        // Safety: `n_seq` is owned by the aligner and valid for the lifetime of `self`.
         let n = unsafe { (*self.seqs.as_ptr()).n_seq };
         n.max(0) as usize
     }
 
-    /// Whether the graph has been finalized with a consensus sequence
+    /// Whether the graph has been finalized with a consensus sequence.
     pub fn has_consensus(&self) -> bool {
         unsafe { (*self.graph.as_ptr()).is_called_cons() > 0 }
     }
 
-    /// Iterate over all nodes in the graph (including source and sink)
+    /// Iterate over all nodes in the graph (including source and sink).
     pub fn nodes(&self) -> GraphNodes<'_> {
         GraphNodes {
             graph: self,
@@ -87,7 +87,7 @@ impl<'a> Graph<'a> {
         }
     }
 
-    /// Node id at a given topological index.
+    /// Node ID at a given topological index.
     ///
     /// Requires the graph to be topologically sorted (e.g. via
     /// [`crate::Aligner::ensure_topological`]).
@@ -111,7 +111,7 @@ impl<'a> Graph<'a> {
 
     /// Snapshot metadata for a node by its id.
     ///
-    /// This allocates edge vectors; for a borrowed, zero-allocation view use
+    /// This allocates edge vectors; for a borrowed, zero-allocation view use.
     /// [`Graph::node_view`].
     pub fn node(&self, id: NodeId) -> Result<NodeRef> {
         let node = self.node_by_id(id)?;
@@ -124,28 +124,28 @@ impl<'a> Graph<'a> {
         Ok(self.build_node_view(node))
     }
 
-    /// Sum of outgoing edge weights for the given node
+    /// Sum of outgoing edge weights for the given node.
     pub fn node_weight(&self, id: NodeId) -> Result<i32> {
         let node = self.node_by_id(id)?;
         let weights = self.edge_slice(node.out_edge_weight, node.out_edge_n);
         Ok(weights.iter().copied().sum())
     }
 
-    /// Node ids aligned to the given node (mismatches at the same rank)
+    /// Node ids aligned to the given node (mismatches at the same rank).
     pub fn aligned_nodes(&self, id: NodeId) -> Result<Vec<NodeId>> {
         let node = self.node_by_id(id)?;
         let aligned = self.edge_slice(node.aligned_node_id, node.aligned_node_n);
         Ok(aligned.iter().copied().map(NodeId).collect())
     }
 
-    /// Sequence metadata loaded into the graph
+    /// Sequence metadata loaded into the graph.
     pub fn sequences(&self) -> Sequences<'_> {
-        // Safety: the sequence container is allocated alongside the graph and lives for `'self`
+        // Safety: the sequence container is allocated alongside the graph and lives for `'self`.
         let seqs = unsafe { self.seqs.as_ref() };
         Sequences::new(seqs)
     }
 
-    /// Topological index for a node id, if the graph has been ordered
+    /// Topological index for a node ID, if the graph has been ordered.
     pub fn node_index(&self, id: NodeId) -> Result<usize> {
         self.read_mapping(
             self.raw_mapping(|g| g.node_id_to_index),
@@ -154,7 +154,7 @@ impl<'a> Graph<'a> {
         )
     }
 
-    /// Maximum reachable position to the left of the node in topological order
+    /// Maximum reachable position to the left of the node in topological order.
     pub fn node_max_pos_left(&self, id: NodeId) -> Result<usize> {
         self.read_mapping(
             self.raw_mapping(|g| g.node_id_to_max_pos_left),
@@ -163,7 +163,7 @@ impl<'a> Graph<'a> {
         )
     }
 
-    /// Maximum reachable position to the right of the node in topological order
+    /// Maximum reachable position to the right of the node in topological order.
     pub fn node_max_pos_right(&self, id: NodeId) -> Result<usize> {
         self.read_mapping(
             self.raw_mapping(|g| g.node_id_to_max_pos_right),
@@ -172,6 +172,7 @@ impl<'a> Graph<'a> {
         )
     }
 
+    /// Node metadata by topological index.
     fn node_by_index(&self, index: usize) -> Option<NodeRef> {
         let graph = unsafe { self.graph.as_ref() };
         if graph.node.is_null() || index >= graph.node_n.max(0) as usize {
@@ -181,6 +182,7 @@ impl<'a> Graph<'a> {
         Some(self.build_node_ref(node))
     }
 
+    /// Node metadata by ID.
     fn node_by_id(&self, id: NodeId) -> Result<&sys::abpoa_node_t> {
         let index = self.validate_node_id(id)?;
         let graph = unsafe { self.graph.as_ref() };
@@ -188,12 +190,13 @@ impl<'a> Graph<'a> {
         if node_ptr.is_null() {
             return Err(Error::NullPointer("abpoa graph node array was null"));
         }
-        // Safety: the node array is owned by the aligner; we validated the index above
+        // Safety: the node array is owned by the aligner; we validated the index above.
         let node = unsafe { node_ptr.add(index).as_ref() }
             .ok_or(Error::NullPointer("abpoa graph node pointer was null"))?;
         Ok(node)
     }
 
+    /// Build a `NodeRef` from a raw `abpoa_node_t`.
     fn build_node_ref(&self, node: &sys::abpoa_node_t) -> NodeRef {
         NodeRef {
             id: NodeId(node.node_id),
@@ -205,6 +208,7 @@ impl<'a> Graph<'a> {
         }
     }
 
+    /// Build a `NodeView` from a raw `abpoa_node_t`.
     fn build_node_view(&self, node: &sys::abpoa_node_t) -> NodeView<'_> {
         let (in_ids, in_w) = self.edge_slices(node.in_id, node.in_edge_weight, node.in_edge_n);
         let (out_ids, out_w) = self.edge_slices(node.out_id, node.out_edge_weight, node.out_edge_n);
@@ -284,7 +288,7 @@ impl<'a> Graph<'a> {
     }
 }
 
-/// Collection of sequences attached to the graph
+/// Collection of sequences attached to the graph.
 pub struct Sequences<'a> {
     bases: &'a [sys::abpoa_str_t],
     names: &'a [sys::abpoa_str_t],
@@ -307,17 +311,17 @@ impl<'a> Sequences<'a> {
         }
     }
 
-    /// Number of sequences recorded in the graph
+    /// Number of sequences recorded in the graph.
     pub fn len(&self) -> usize {
         self.count
     }
 
-    /// Whether any sequences were provided to the aligner
+    /// Whether any sequences were provided to the aligner.
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
 
-    /// Borrow an entry by index
+    /// Borrow an entry by index.
     pub fn get(&self, index: usize) -> Option<Sequence<'a>> {
         if index < self.len() {
             Some(self.sequence_at(index))
@@ -326,7 +330,7 @@ impl<'a> Sequences<'a> {
         }
     }
 
-    /// Iterate over all sequences and their metadata
+    /// Iterate over all sequences and their metadata.
     pub fn iter(&self) -> SequenceIter<'_> {
         SequenceIter {
             sequences: self,
@@ -334,35 +338,35 @@ impl<'a> Sequences<'a> {
         }
     }
 
-    /// Iterate over the raw sequence strings
+    /// Iterate over the raw sequence strings.
     pub fn sequences(&self) -> impl Iterator<Item = SequenceStr<'a>> + 'a {
         let bases = self.bases;
         let count = self.count;
         (0..count).map(move |index| SequenceStr::from_raw(bases.get(index)))
     }
 
-    /// Iterate over sequence names (may be empty strings)
+    /// Iterate over sequence names (may be empty strings).
     pub fn names(&self) -> impl Iterator<Item = SequenceStr<'a>> + 'a {
         let names = self.names;
         let count = self.count;
         (0..count).map(move |index| SequenceStr::from_raw(names.get(index)))
     }
 
-    /// Iterate over optional sequence comments
+    /// Iterate over optional sequence comments.
     pub fn comments(&self) -> impl Iterator<Item = SequenceStr<'a>> + 'a {
         let comments = self.comments;
         let count = self.count;
         (0..count).map(move |index| SequenceStr::from_raw(comments.get(index)))
     }
 
-    /// Iterate over qualities if present
+    /// Iterate over qualities if present.
     pub fn qualities(&self) -> impl Iterator<Item = SequenceStr<'a>> + 'a {
         let qualities = self.qualities;
         let count = self.count;
         (0..count).map(move |index| SequenceStr::from_raw(qualities.get(index)))
     }
 
-    /// Iterate over reverse-complement flags in input order
+    /// Iterate over reverse-complement flags in input order.
     pub fn reverse_complements(&self) -> impl Iterator<Item = bool> + 'a {
         self.is_reverse_complement.iter().map(|flag| *flag != 0)
     }
@@ -391,7 +395,7 @@ impl<'a> Sequences<'a> {
         if len == 0 || ptr.is_null() {
             &[]
         } else {
-            // Safety: abPOA allocates `len` entries when `n_seq` is set to at least `len`
+            // Safety: abPOA allocates `len` entries when `n_seq` is set to at least `len`.
             unsafe { slice::from_raw_parts(ptr, len) }
         }
     }
@@ -400,13 +404,13 @@ impl<'a> Sequences<'a> {
         if len == 0 || ptr.is_null() {
             &[]
         } else {
-            // Safety: `is_rc` is sized to `n_seq` entries alongside other sequence buffers
+            // Safety: `is_rc` is sized to `n_seq` entries alongside other sequence buffers.
             unsafe { slice::from_raw_parts(ptr, len) }
         }
     }
 }
 
-/// Borrowed view of a single sequence's metadata
+/// Borrowed view of a single sequence's metadata.
 #[derive(Clone, Copy, Debug)]
 pub struct Sequence<'a> {
     pub sequence: SequenceStr<'a>,
@@ -416,7 +420,7 @@ pub struct Sequence<'a> {
     pub is_reverse_complement: bool,
 }
 
-/// Non-owning string wrapper backed by `abpoa_str_t`
+/// Non-owning string wrapper backed by `abpoa_str_t`.
 #[derive(Clone, Copy)]
 pub struct SequenceStr<'a> {
     raw: Option<NonNull<sys::abpoa_str_t>>,
@@ -431,10 +435,10 @@ impl<'a> SequenceStr<'a> {
         }
     }
 
-    /// Length in bytes of the underlying buffer
+    /// Length in bytes of the underlying buffer.
     pub fn len(&self) -> usize {
         let Some(raw) = self.raw else { return 0 };
-        // Safety: pointer was derived from an abPOA-managed slice
+        // Safety: pointer was derived from an abPOA-managed slice.
         let raw = unsafe { raw.as_ref() };
         if raw.s.is_null() {
             0
@@ -443,27 +447,27 @@ impl<'a> SequenceStr<'a> {
         }
     }
 
-    /// Whether the buffer is empty or missing
+    /// Whether the buffer is empty or missing.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Raw bytes of the string (may not be valid UTF-8)
+    /// Raw bytes of the string (may not be valid UTF-8).
     pub fn as_bytes(&self) -> &'a [u8] {
         let Some(raw) = self.raw else {
             return &[];
         };
-        // Safety: pointer was derived from an abPOA-managed slice
+        // Safety: pointer was derived from an abPOA-managed slice.
         let raw = unsafe { raw.as_ref() };
         let len = raw.l.max(0) as usize;
         if len == 0 || raw.s.is_null() {
             return &[];
         }
-        // Safety: abPOA allocates `s` to at least `len` bytes when `l > 0`
+        // Safety: abPOA allocates `s` to at least `len` bytes when `l > 0`.
         unsafe { slice::from_raw_parts(raw.s as *const u8, len) }
     }
 
-    /// Interpret the buffer as UTF-8 when possible
+    /// Interpret the buffer as UTF-8 when possible.
     pub fn as_str(&self) -> Option<&'a str> {
         std::str::from_utf8(self.as_bytes()).ok()
     }
@@ -485,7 +489,7 @@ impl<'a> fmt::Debug for SequenceStr<'a> {
     }
 }
 
-/// Iterator over sequences produced by [`Graph::sequences`]
+/// Iterator over sequences produced by [`Graph::sequences`].
 pub struct SequenceIter<'a> {
     sequences: &'a Sequences<'a>,
     next: usize,
@@ -516,7 +520,7 @@ impl<'a> ExactSizeIterator for SequenceIter<'a> {
     }
 }
 
-/// Iterator over graph nodes produced by [`Graph::nodes`]
+/// Iterator over graph nodes produced by [`Graph::nodes`].
 pub struct GraphNodes<'a> {
     graph: &'a Graph<'a>,
     next: usize,

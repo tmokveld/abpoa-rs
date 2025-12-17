@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     let options = [b'A', b'C', b'G', b'T'];
     for i in 0..30usize {
         let mut seq = base.repeat(1); // Low-complexity sequence kills the minimizer seeding (try setting repeat >1 to see the difference)
-        // Mutate the sequence to have some variation across "reads"
+        // Mutate the sequence to have some variation across "reads".
         for pos in (i..seq.len()).step_by(30) {
             seq[pos] = options[(i + pos) % options.len()];
         }

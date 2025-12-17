@@ -57,6 +57,34 @@ let mut aligner = Aligner::with_params(params)?;
 let result = aligner.msa(SequenceBatch::from_sequences(&seqs))?;
 ```
 
+## Parameters defaults
+
+`Parameters::new()` / `Parameters::configure()` start from the vendored abPOA defaults with a few
+tweaks. The effective defaults are:
+
+- Alphabet: DNA (`Alphabet::Dna`, `m = 5`).
+- Outputs: consensus + MSA (`OutputMode::CONSENSUS | OutputMode::MSA`).
+- Read ids: enabled (`set_use_read_ids(true)`).
+- Alignment mode: global (`AlignMode::Global`).
+- Scoring: `Scoring::convex(2, 4, 4, 2, 24, 1)` (match, mismatch, gap_open1, gap_ext1, second_gap_open, second_gap_extend).
+- Adaptive band extras: `set_band(10, 0.01)`.
+- Z-drop / end bonus: disabled (`None`, stored as `-1` in abPOA).
+- Minimizer seeding: disabled (`set_disable_seeding(true)`), with `k=19`, `w=10`, `min_w=500`.
+- Progressive POA / guide tree: disabled (`set_progressive_poa(false)`).
+- Input sorting: disabled (`set_sort_input_seq(false)`; deprecated/no effect in Rust APIs).
+- Ambiguous strand handling: disabled (`set_ambiguous_strand(false)`).
+- Gap placement: minimap2-like left-most (`set_gap_on_right(false)`, `set_gap_at_end(false)`).
+- Sub-alignment: disabled (`set_sub_alignment(false)`).
+- Node-coverage path scoring: disabled (`set_inc_path_score(false)`).
+- Quality-weighted scoring: disabled (`set_use_quality(false)`).
+- Consensus: `ConsensusAlgorithm::HeaviestBundle`, `max_n_cons = 1`, `min_freq = 0.25`.
+- Verbosity: `Verbosity::None`.
+- Score matrix file / custom matrix / incremental graph file: unset.
+
+Note: upstream abPOA defaults to MSA output disabled and `use_read_ids = false`. This wrapper
+enables both by default so `msa` can return per-read rows, and so MSA/GFA/multi-consensus outputs
+can be enabled without rebuilding the graph.
+
 ## User tips
 
 Input ordering can affect POA/MSA results, especially with incremental APIs, where progressive POA is not supported
