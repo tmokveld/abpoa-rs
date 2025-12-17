@@ -59,12 +59,12 @@ pub struct EncodedMsaResult {
     pub clusters: Vec<EncodedCluster>,
 }
 
-/// Zero-copy borrowed view into abPOA's encoded MSA/consensus buffers.
+/// Zero-copy borrowed view into abPOA's encoded MSA/consensus buffers
 ///
 /// This view borrows the underlying output buffers owned by an [`crate::Aligner`]. It is
 /// invalidated by any subsequent call that regenerates or clears MSA/consensus output (such as
 /// `finalize_msa*`, `msa*`, `reset`, or graph restoration). Rust's borrow checker prevents using
-/// the aligner mutably while a view exists.
+/// the aligner mutably while a view exists
 pub struct EncodedMsaView<'a> {
     abc: *const sys::abpoa_cons_t,
     alphabet: Alphabet,
@@ -362,12 +362,6 @@ impl<'a> ExactSizeIterator for EncodedClusters<'a> {
     fn len(&self) -> usize {
         self.total.saturating_sub(self.next)
     }
-}
-
-/// Placeholder for a single alignment row (reserved for future APIs)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Alignment {
-    pub sequence: String,
 }
 
 impl MsaResult {

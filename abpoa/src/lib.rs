@@ -49,8 +49,8 @@ pub use crate::params::{
 };
 #[cfg(unix)]
 pub use crate::result::{
-    Alignment, Cluster, EncodedCluster, EncodedClusterView, EncodedClusters, EncodedMsaResult,
-    EncodedMsaRows, EncodedMsaView, MsaResult,
+    Cluster, EncodedCluster, EncodedClusterView, EncodedClusters, EncodedMsaResult, EncodedMsaRows,
+    EncodedMsaView, MsaResult,
 };
 
 #[cfg(unix)]

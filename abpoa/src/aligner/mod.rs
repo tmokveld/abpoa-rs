@@ -3,6 +3,7 @@
 //! Module tries to keep the unsafe FFI contained while exposing methods for
 //! running alignments, updating graphs, and exporting consensus/MSA/GFA outputs
 
+mod core;
 mod incremental;
 mod io;
 mod one_shot;
