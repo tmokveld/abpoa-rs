@@ -19,7 +19,7 @@ fn main() -> abpoa::Result<()> {
     let mut params = Parameters::configure()?;
     params.set_max_consensus(2)?;
     let mut aligner = Aligner::with_params(params)?;
-    let view = aligner.msa_view_encoded(SequenceBatch::from_sequences(&seqs))?;
+    let view = aligner.msa_view_encoded(SequenceBatch::from_sequences(&seqs)?)?;
 
     println!(
         "alphabet: {:?}\nsequences: {}\nmsa_len: {}\nclusters: {}",

@@ -28,7 +28,7 @@ fn main() -> Result<()> {
 
     let mut aligner = Aligner::with_params(params)?;
     let result =
-        aligner.msa(SequenceBatch::from_sequences(&seqs).with_quality_weights(&weight_refs))?;
+        aligner.msa(SequenceBatch::from_sequences(&seqs)?.with_quality_weights(&weight_refs)?)?;
 
     println!("Consensus sequences:");
     for cluster in result.clusters {

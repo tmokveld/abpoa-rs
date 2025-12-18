@@ -1,4 +1,4 @@
-use super::{Aligner, SequenceBatch, encode_sequences, to_i32, validate_quality_weights};
+use super::{Aligner, SequenceBatch, encode_sequences, to_i32};
 use crate::encode::Alphabet;
 use crate::result::{EncodedMsaResult, EncodedMsaView, MsaResult};
 use crate::{Error, Result, sys};
@@ -38,9 +38,6 @@ impl Aligner {
             let alphabet = self.alphabet();
             return Ok(convert(ptr::null(), alphabet));
         }
-        if seqs.iter().any(|seq| seq.is_empty()) {
-            return Err(Error::InvalidInput("cannot align an empty sequence".into()));
-        }
         let outputs = self.params.outputs();
         if outputs.is_empty() {
             return Err(Error::InvalidInput(
@@ -66,8 +63,8 @@ impl Aligner {
         let mut seq_ptrs: Vec<*mut u8> =
             encoded.iter().map(|seq| seq.as_ptr() as *mut u8).collect();
 
-        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
-        let mut qual_ptrs: Vec<*mut i32> = quality_weights
+        let mut qual_ptrs: Vec<*mut i32> = batch
+            .quality_weights()
             .map(|w| w.iter().map(|row| row.as_ptr() as *mut i32).collect())
             .unwrap_or_default();
         let qual_ptr = if qual_ptrs.is_empty() {

@@ -39,7 +39,7 @@ fn main() -> abpoa::Result<()> {
 
     let mut aligner = Aligner::with_params(params)?;
     let sequences = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACGA".as_ref()];
-    let result = aligner.msa(SequenceBatch::from_sequences(&sequences))?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&sequences)?)?;
     println!("Consensus: {}", result.clusters[0].consensus);
     Ok(())
 }
@@ -64,7 +64,7 @@ params
     .set_consensus(ConsensusAlgorithm::MostFrequent, 1, 0.0)?;
 
 let mut aligner = Aligner::with_params(params)?;
-let result = aligner.msa(SequenceBatch::from_sequences(&seqs))?;
+let result = aligner.msa(SequenceBatch::from_sequences(&seqs)?)?;
 ```
 
 ## Parameters defaults
@@ -111,7 +111,7 @@ The crate mirrors upstream abPOA, but wraps pointers and lifetimes safely. The m
   and export results.
 - `Parameters`: scoring and algorithm configuration (alignment mode, seeding, consensus, RC handling,
   verbosity, etc.), nearly all setters are chainable.
-- `SequenceBatch`: a view over input sequences plus optional read names and quality weights.
+- `SequenceBatch`: a validated view over input sequences plus optional read names and quality weights.
 - `OutputMode`: choose which outputs to compute (`OutputMode::CONSENSUS`, `OutputMode::MSA`, or both) via `Parameters::set_outputs`.
 - `MsaResult` / `EncodedMsaResult`: owned alignment output. `msa` holds per-read aligned rows; `clusters`
   holds one or more consensus sequences with coverage/read-id metadata.
@@ -214,7 +214,7 @@ params
     .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?; // keep max_consensus = 1
 
 let mut aligner = Aligner::with_params(params)?;
-aligner.msa(SequenceBatch::from_sequences(&seqs))?;
+aligner.msa(SequenceBatch::from_sequences(&seqs)?)?;
 aligner.write_consensus_fasta(&mut std::io::stdout())?;
 
 // These will error because the graph was built without read ids:

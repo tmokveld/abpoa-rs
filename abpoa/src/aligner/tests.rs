@@ -17,7 +17,7 @@ fn aligner_init_and_free() {
 fn from_graph_file_restores_graph_and_toggle_read_ids() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     let path = std::env::temp_dir().join(format!(
@@ -77,7 +77,7 @@ fn dna_msa_variants() {
     let sequences = [b"ACGT".as_ref(), b"ACGT".as_ref(), b"ACGG".as_ref()];
     let mut aligner = Aligner::new().unwrap();
     let decoded = aligner
-        .msa(SequenceBatch::from_sequences(&sequences))
+        .msa(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
 
     assert_eq!(decoded.msa.len(), sequences.len());
@@ -96,7 +96,7 @@ fn dna_msa_variants() {
     }
 
     let encoded = aligner
-        .msa_encoded(SequenceBatch::from_sequences(&sequences))
+        .msa_encoded(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
 
     assert_eq!(encoded.msa.len(), decoded.msa.len());
@@ -116,7 +116,7 @@ fn dna_msa_variants() {
     let sequences_with_gap = [b"ACGT".as_ref(), b"AGT".as_ref()];
     let mut aligner = Aligner::new().unwrap();
     let gap_result = aligner
-        .msa(SequenceBatch::from_sequences(&sequences_with_gap))
+        .msa(SequenceBatch::from_sequences(&sequences_with_gap).unwrap())
         .unwrap();
 
     assert_eq!(gap_result.msa.len(), sequences_with_gap.len());
@@ -139,7 +139,12 @@ fn dna_msa_variants() {
     let mut aligner = Aligner::new().unwrap();
 
     let qual_result = aligner
-        .msa(SequenceBatch::from_sequences(&sequences_quality).with_quality_weights(&qualities))
+        .msa(
+            SequenceBatch::from_sequences(&sequences_quality)
+                .unwrap()
+                .with_quality_weights(&qualities)
+                .unwrap(),
+        )
         .unwrap();
 
     assert_eq!(qual_result.msa.len(), sequences_quality.len());
@@ -153,9 +158,9 @@ fn rejects_negative_quality_weights() {
     let qual_b = [10, 10, 10, 10];
     let qualities: [&[i32]; 2] = [qual_a.as_slice(), qual_b.as_slice()];
 
-    let mut aligner = Aligner::new().unwrap();
-    let err = aligner
-        .msa(SequenceBatch::from_sequences(&sequences).with_quality_weights(&qualities))
+    let err = SequenceBatch::from_sequences(&sequences)
+        .unwrap()
+        .with_quality_weights(&qualities)
         .unwrap_err();
 
     match err {
@@ -173,7 +178,7 @@ fn rejects_negative_quality_weights() {
 fn consensus_writer_matches_alignment() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]).unwrap())
         .unwrap();
 
     let mut buffer = Vec::new();
@@ -193,7 +198,7 @@ fn consensus_writer_matches_alignment() {
 fn consensus_fastq_writer_produces_valid_records() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]).unwrap())
         .unwrap();
 
     let mut buffer = Vec::new();
@@ -235,7 +240,12 @@ fn msa_writer_includes_names_and_reverse_complements() {
     let names = ["read1", "read2"];
 
     aligner
-        .msa(SequenceBatch::from_sequences(&sequences).with_names(&names))
+        .msa(
+            SequenceBatch::from_sequences(&sequences)
+                .unwrap()
+                .with_names(&names)
+                .unwrap(),
+        )
         .unwrap();
 
     let mut buffer = Vec::new();
@@ -257,7 +267,7 @@ fn msa_writer_includes_names_and_reverse_complements() {
 fn gfa_writer_generates_header() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     let mut buffer = Vec::new();
@@ -298,7 +308,7 @@ fn graph_alignment_round_trip() {
 
     let mut expected_aligner = Aligner::new().unwrap();
     let expected = expected_aligner
-        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     assert_eq!(result.clusters.len(), 1);
@@ -313,13 +323,13 @@ fn graph_alignment_round_trip() {
 fn incremental_api_matches_one_shot() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
     let incremental = aligner.finalize_msa().unwrap();
 
     let mut expected_aligner = Aligner::new().unwrap();
     let expected = expected_aligner
-        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     assert_eq!(incremental.clusters.len(), expected.clusters.len());
@@ -334,7 +344,7 @@ fn incremental_api_matches_one_shot() {
 fn finalize_msa_recomputes_after_cleanup() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGT"]).unwrap())
         .unwrap();
 
     let first = aligner.finalize_msa().unwrap();
@@ -350,17 +360,17 @@ fn finalize_msa_recomputes_after_cleanup() {
 fn adding_sequences_updates_graph() {
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
     aligner
-        .add_sequences(SequenceBatch::from_sequences(&[b"ACGA"]))
+        .add_sequences(SequenceBatch::from_sequences(&[b"ACGA"]).unwrap())
         .unwrap();
 
     let incremental = aligner.finalize_msa().unwrap();
 
     let mut expected_aligner = Aligner::new().unwrap();
     let expected = expected_aligner
-        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]))
+        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]).unwrap())
         .unwrap();
 
     assert_eq!(incremental.msa.len(), expected.msa.len());
@@ -416,7 +426,7 @@ fn subgraph_alignment_matches_one_shot() {
 
     let mut expected_aligner = Aligner::new().unwrap();
     let expected = expected_aligner
-        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]))
+        .msa(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG", b"ACGA"]).unwrap())
         .unwrap();
 
     assert_eq!(
@@ -487,7 +497,7 @@ fn msa_encoded_matches_decoded_for_amino_acids() {
     let sequences = [b"ACDE".as_ref(), b"ACDF".as_ref()];
 
     let decoded = aligner
-        .msa(SequenceBatch::from_sequences(&sequences))
+        .msa(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
     assert_eq!(decoded.msa.len(), sequences.len());
     assert!(
@@ -500,7 +510,7 @@ fn msa_encoded_matches_decoded_for_amino_acids() {
     );
 
     let encoded = aligner
-        .msa_encoded(SequenceBatch::from_sequences(&sequences))
+        .msa_encoded(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
 
     assert_eq!(encoded.msa.len(), decoded.msa.len());
@@ -545,7 +555,7 @@ fn msa_view_encoded_matches_owned_one_shot() {
 
     let from_view = {
         let view = aligner
-            .msa_view_encoded(SequenceBatch::from_sequences(&sequences))
+            .msa_view_encoded(SequenceBatch::from_sequences(&sequences).unwrap())
             .unwrap();
         assert_eq!(view.sequence_count(), sequences.len());
         assert!(view.msa_len() > 0);
@@ -554,7 +564,7 @@ fn msa_view_encoded_matches_owned_one_shot() {
     };
 
     let owned = aligner
-        .msa_encoded(SequenceBatch::from_sequences(&sequences))
+        .msa_encoded(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
     assert_eq!(from_view, owned);
 }
@@ -564,7 +574,7 @@ fn finalize_msa_view_encoded_matches_owned() {
     let sequences = [b"ACGT".as_ref(), b"ACGG".as_ref(), b"ACG".as_ref()];
     let mut aligner = Aligner::new().unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&sequences))
+        .msa_in_place(SequenceBatch::from_sequences(&sequences).unwrap())
         .unwrap();
 
     let from_view = {
@@ -587,7 +597,7 @@ fn read_id_less_graph_rejects_msa_gfa_and_multi_consensus() {
     let mut aligner = Aligner::with_params(params).unwrap();
 
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     // Single-consensus is still supported without read ids.
@@ -642,7 +652,7 @@ fn can_generate_msa_and_multi_consensus_after_consensus_only_build_with_read_ids
 
     let mut aligner = Aligner::with_params(params).unwrap();
     aligner
-        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]))
+        .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT", b"ACGG"]).unwrap())
         .unwrap();
 
     aligner

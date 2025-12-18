@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let mut aligner = Aligner::with_params(params)?;
 
     // Align the first few sequences
-    aligner.msa_in_place(SequenceBatch::from_sequences(&seqs[..first_part]))?;
+    aligner.msa_in_place(SequenceBatch::from_sequences(&seqs[..first_part])?)?;
     let initial = aligner.finalize_msa()?;
     println!("Initial MSA (first {first_part} sequences):");
     println!("\nMSA rows:");
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     );
     // Append sequences one at a time without generating output
     for seq in seqs[first_part..first_part + second_part].iter() {
-        aligner.add_sequences(SequenceBatch::from_sequences(&[seq]))?;
+        aligner.add_sequences(SequenceBatch::from_sequences(&[seq])?)?;
     }
 
     let secondary = aligner.finalize_msa()?;
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     if third_part > 0 {
         aligner.add_sequences(SequenceBatch::from_sequences(
             &seqs[seqs.len() - third_part..],
-        ))?;
+        )?)?;
     }
 
     let result = aligner.finalize_msa()?;

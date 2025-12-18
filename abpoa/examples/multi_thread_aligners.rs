@@ -97,7 +97,7 @@ fn run_once(
     let mut expected: Option<String> = None;
     for iter_idx in 0..iters {
         let iter_start = Instant::now();
-        let result = aligner.msa(SequenceBatch::from_sequences(&read_refs))?;
+        let result = aligner.msa(SequenceBatch::from_sequences(&read_refs)?)?;
         let got = result
             .clusters
             .first()

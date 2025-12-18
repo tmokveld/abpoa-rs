@@ -34,7 +34,7 @@ fn main() -> abpoa::Result<()> {
         .set_ambiguous_strand(true); // Enable reverse complement handling
     let mut aligner = Aligner::with_params(params)?;
 
-    let result = aligner.msa(SequenceBatch::from_sequences(&seqs).with_names(&name_refs))?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&seqs)?.with_names(&name_refs)?)?;
     println!(
         "Consensus sequences: {:?}",
         result

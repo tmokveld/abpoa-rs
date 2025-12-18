@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let mut plain_aligner = Aligner::with_params(plain_params)?;
 
     let start = Instant::now();
-    let result = plain_aligner.msa(SequenceBatch::from_sequences(&seqs))?;
+    let result = plain_aligner.msa(SequenceBatch::from_sequences(&seqs)?)?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);
     }
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     let mut seeded_aligner = Aligner::with_params(seeded_params)?;
 
     let start = Instant::now();
-    let result = seeded_aligner.msa(SequenceBatch::from_sequences(&seqs))?;
+    let result = seeded_aligner.msa(SequenceBatch::from_sequences(&seqs)?)?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);
     }
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let mut incremental_aligner = Aligner::with_params(inc_params)?;
 
     let start = Instant::now();
-    incremental_aligner.msa_in_place(SequenceBatch::from_sequences(&seqs))?;
+    incremental_aligner.msa_in_place(SequenceBatch::from_sequences(&seqs)?)?;
     let result = incremental_aligner.finalize_msa()?;
     for (idx, cluster) in result.clusters.iter().enumerate() {
         println!("Consensus {}: {}", idx + 1, cluster.consensus);

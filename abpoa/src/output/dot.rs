@@ -323,7 +323,7 @@ mod tests {
         let sequences = [b"ACGT".as_ref(), b"ACGT".as_ref()];
         let mut aligner = Aligner::with_params(Parameters::new().unwrap()).unwrap();
         let result = aligner
-            .msa(SequenceBatch::from_sequences(&sequences))
+            .msa(SequenceBatch::from_sequences(&sequences).unwrap())
             .unwrap();
         assert!(
             !result.clusters.is_empty(),

@@ -29,7 +29,7 @@ fn main() -> Result<()> {
         .set_verbosity(Verbosity::Info);
 
     let mut aligner = Aligner::with_params(params)?;
-    let result = aligner.msa(SequenceBatch::from_sequences(&sequences))?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&sequences)?)?;
 
     assert_eq!(result.msa.len(), truth.len());
     for (row, expected) in result.msa.iter().zip(truth.iter()) {

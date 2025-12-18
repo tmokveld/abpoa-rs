@@ -1,5 +1,5 @@
 use super::{
-    Aligner, RawAlignment, SequenceBatch, encode_sequences, to_i32, validate_quality_weights,
+    Aligner, RawAlignment, SequenceBatch, encode_sequences, to_i32,
 };
 use crate::encode::Alphabet;
 use crate::params::{NodeId, OutputMode, Parameters, SentinelNode};
@@ -545,16 +545,12 @@ impl Aligner {
             .set_use_quality(batch.quality_weights().is_some());
         let alphabet = self.alphabet();
         let encoded = encode_sequences(seqs, alphabet);
-        let seq_lens: Vec<i32> = encoded
-            .iter()
-            .map(|seq| to_i32(seq.len(), "sequence length exceeds i32"))
-            .collect::<Result<_>>()?;
         let max_len = encoded.iter().map(Vec::len).max().unwrap_or(0);
         self.reset(max_len)?;
 
         let total_reads = to_i32(encoded.len(), "too many sequences for abpoa")?;
         self.store_batch_in_abs(&batch, 0, total_reads)?;
-        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
+        let quality_weights = batch.quality_weights();
         self.align_and_add_batch(&encoded, quality_weights, 0, total_reads)?;
 
         Ok(())
@@ -572,10 +568,6 @@ impl Aligner {
 
         let alphabet = self.alphabet();
         let encoded = encode_sequences(new_seqs, alphabet);
-        let seq_lens: Vec<i32> = encoded
-            .iter()
-            .map(|seq| to_i32(seq.len(), "sequence length exceeds i32"))
-            .collect::<Result<_>>()?;
         let current = self.sequence_count()?;
         let added = to_i32(encoded.len(), "too many sequences for abpoa")?;
         let total_reads = current
@@ -583,7 +575,7 @@ impl Aligner {
             .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
 
         self.store_batch_in_abs(&batch, current, total_reads)?;
-        let quality_weights = validate_quality_weights(batch.quality_weights(), &seq_lens)?;
+        let quality_weights = batch.quality_weights();
         self.align_and_add_batch(&encoded, quality_weights, current, total_reads)?;
 
         Ok(())

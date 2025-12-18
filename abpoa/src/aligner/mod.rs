@@ -39,6 +39,9 @@ pub struct Aligner {
 }
 
 /// Collection of sequences plus optional metadata used as input to MSA calls.
+///
+/// Construction validates sequence lengths, names, and quality weights.
+#[derive(Debug)]
 pub struct SequenceBatch<'a> {
     sequences: &'a [&'a [u8]],
     names: Option<&'a [&'a str]>,
@@ -47,24 +50,27 @@ pub struct SequenceBatch<'a> {
 
 impl<'a> SequenceBatch<'a> {
     /// Construct a batch from raw sequence slices.
-    pub fn from_sequences(sequences: &'a [&'a [u8]]) -> Self {
-        Self {
+    pub fn from_sequences(sequences: &'a [&'a [u8]]) -> Result<Self> {
+        validate_sequences(sequences)?;
+        Ok(Self {
             sequences,
             names: None,
             quality_weights: None,
-        }
+        })
     }
 
     /// Attach per-sequence names (must match the sequence count).
-    pub fn with_names(mut self, names: &'a [&'a str]) -> Self {
+    pub fn with_names(mut self, names: &'a [&'a str]) -> Result<Self> {
+        validate_names(self.sequences, names)?;
         self.names = Some(names);
-        self
+        Ok(self)
     }
 
     /// Attach per-base quality weights (must match sequence count and lengths).
-    pub fn with_quality_weights(mut self, quality_weights: &'a [&'a [i32]]) -> Self {
+    pub fn with_quality_weights(mut self, quality_weights: &'a [&'a [i32]]) -> Result<Self> {
+        validate_quality_weights(self.sequences, quality_weights)?;
         self.quality_weights = Some(quality_weights);
-        self
+        Ok(self)
     }
 
     pub(crate) fn sequences(&self) -> &'a [&'a [u8]] {
@@ -122,13 +128,6 @@ impl Aligner {
     ) -> Result<()> {
         let seqs = batch.sequences();
         let names = batch.names();
-        if let Some(names) = names {
-            if names.len() != seqs.len() {
-                return Err(Error::InvalidInput(
-                    "names length must match sequence count".into(),
-                ));
-            }
-        }
 
         let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };
         if abs_ptr.is_null() {
@@ -300,22 +299,35 @@ fn encode_sequences(seqs: &[&[u8]], alphabet: Alphabet) -> Vec<Vec<u8>> {
     }
 }
 
-fn validate_quality_weights<'a>(
-    weights: Option<&'a [&'a [i32]]>,
-    lengths: &[i32],
-) -> Result<Option<&'a [&'a [i32]]>> {
-    let Some(weights) = weights else {
-        return Ok(None);
-    };
-    if weights.len() != lengths.len() {
+fn validate_sequences(sequences: &[&[u8]]) -> Result<()> {
+    to_i32(sequences.len(), "too many sequences for abpoa")?;
+    for seq in sequences {
+        if seq.is_empty() {
+            return Err(Error::InvalidInput("cannot align an empty sequence".into()));
+        }
+        to_i32(seq.len(), "sequence length exceeds i32")?;
+    }
+    Ok(())
+}
+
+fn validate_names(sequences: &[&[u8]], names: &[&str]) -> Result<()> {
+    if names.len() != sequences.len() {
+        return Err(Error::InvalidInput(
+            "names length must match sequence count".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_quality_weights(sequences: &[&[u8]], weights: &[&[i32]]) -> Result<()> {
+    if weights.len() != sequences.len() {
         return Err(Error::InvalidInput(
             "quality weights length must match sequence count".into(),
         ));
     }
 
-    for (row, &len) in weights.iter().zip(lengths) {
-        let expected = len.max(0) as usize;
-        if row.len() != expected {
+    for (row, seq) in weights.iter().zip(sequences) {
+        if row.len() != seq.len() {
             return Err(Error::InvalidInput(
                 "quality weights must match each sequence length".into(),
             ));
@@ -326,7 +338,7 @@ fn validate_quality_weights<'a>(
             ));
         }
     }
-    Ok(Some(weights))
+    Ok(())
 }
 
 fn to_i32(value: usize, context: &'static str) -> Result<i32> {

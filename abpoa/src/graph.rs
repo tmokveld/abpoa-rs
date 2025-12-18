@@ -555,7 +555,7 @@ mod tests {
         let params = Parameters::new().unwrap();
         let mut aligner = Aligner::with_params(params).unwrap();
         aligner
-            .msa_in_place(SequenceBatch::from_sequences(seqs))
+            .msa_in_place(SequenceBatch::from_sequences(seqs).unwrap())
             .unwrap();
         aligner.finalize_msa().unwrap();
         let graph = aligner.graph().unwrap();
@@ -653,7 +653,7 @@ mod tests {
         let names = ["read1", "read2"];
 
         aligner
-            .msa(SequenceBatch::from_sequences(&seqs).with_names(&names))
+            .msa(SequenceBatch::from_sequences(&seqs).unwrap().with_names(&names).unwrap())
             .unwrap();
 
         let graph = aligner.graph().unwrap();

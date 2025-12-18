@@ -67,7 +67,7 @@ fn main() -> Result<()> {
         .set_sub_alignment(true);
     let mut aligner = Aligner::with_params(params)?;
 
-    let result = aligner.msa(SequenceBatch::from_sequences(&read_refs))?;
+    let result = aligner.msa(SequenceBatch::from_sequences(&read_refs)?)?;
 
     result.clusters.iter().for_each(|cluster| {
         println!("Cluster read ids: {:?}", cluster.read_ids);
