@@ -21,8 +21,8 @@ pub fn decode_dna(codes: &[u8]) -> String {
     codes.iter().map(|&c| decode_dna_code(c)).collect()
 }
 
-/// Encode an amino acid sequence into abPOA's 0-26 alphabet
-/// Unknown residues are mapped to `*` (`26`), matching `ab_aa26_table`
+/// Encode an amino acid sequence into abPOA's 0-26 alphabet.
+/// Unknown residues are mapped to `*` (`26`), matching `ab_aa26_table`.
 pub fn encode_aa(seq: &[u8]) -> Vec<u8> {
     seq.iter().copied().map(encode_aa_residue).collect()
 }
@@ -52,7 +52,7 @@ pub(crate) fn decode_dna_code(code: u8) -> char {
         2 => 'G',
         3 => 'T',
         4 => 'N',
-        // abPOA uses `m` (5) as the gap sentinel in MSA output; 27 also maps to '-'
+        // abPOA uses `m` (5) as the gap sentinel in MSA output; 27 also maps to '-'.
         5 | 27 => '-',
         _ => 'N',
     }
@@ -120,7 +120,7 @@ pub(crate) fn decode_aa_code(code: u8) -> char {
         24 => 'Y',
         25 => 'Z',
         26 => '*',
-        // abPOA uses `m` (27) as the gap sentinel in RC-MSA output
+        // abPOA uses `m` (27) as the gap sentinel in RC-MSA output.
         27 => '-',
         _ => '*',
     }

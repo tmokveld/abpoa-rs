@@ -1,5 +1,5 @@
 //! Demonstrates exporting an MSA and graph to disk, then restoring the graph from the saved files
-//! (this may be a bit buggy if you use the default Parameters versus the custom Parameters used to save the graph)
+//! (this may be a bit buggy if you use the default Parameters versus the custom Parameters used to save the graph).
 
 use abpoa::{Aligner, Graph, OutputMode, Parameters, SequenceBatch};
 

@@ -77,9 +77,10 @@ tweaks. The effective defaults are:
 - Read ids: enabled (`set_use_read_ids(true)`).
 - Alignment mode: global (`AlignMode::Global`).
 - Scoring: `Scoring::convex(2, 4, 4, 2, 24, 1)` (match, mismatch, gap_open1, gap_ext1, second_gap_open, second_gap_extend).
-- Adaptive band extras: `set_band(10, 0.01)`.
+- Adaptive banding: `set_band(10, 0.01)` sets `wb=10`, `wf=0.01`, with effective slack `w = wb + floor(wf * qlen)` (where `qlen` is the aligned sequence length). Setting `wb < 0` disables banding (full DP).
+- Banding caveat: extremely small `w` (e.g. `set_band(1, 0.0)`) can trigger upstream abPOA fatal exits in SIMD backtracking; prefer a larger `w` or disable banding (e.g. `set_band(-1, 0.0)`).
 - Z-drop / end bonus: disabled (`None`, stored as `-1` in abPOA).
-- Minimizer seeding: disabled (`set_disable_seeding(true)`), with `k=19`, `w=10`, `min_w=500`.
+- Minimizer seeding: disabled (`set_disable_seeding(true)`), with `k=19`, `w=10`, `min_w=500` (note: this `w` is the minimizer window size, not the DP band `w` above).
 - Progressive POA / guide tree: disabled (`set_progressive_poa(false)`).
 - Input sorting: disabled (`set_sort_input_seq(false)`; deprecated/no effect in Rust APIs).
 - Ambiguous strand handling: disabled (`set_ambiguous_strand(false)`).

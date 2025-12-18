@@ -1,4 +1,4 @@
-//! Demonstrates per-read subgraph ranges, aligning each sequence to different windows of the graph
+//! Demonstrates per-read subgraph ranges, aligning each sequence to different windows of the graph.
 
 use abpoa::encode::encode_dna;
 use abpoa::{
@@ -7,7 +7,7 @@ use abpoa::{
 };
 
 fn main() -> Result<()> {
-    let first_n = 5; // Only consider the first n sequences (5 matches the example in the upstream C code)
+    let first_n = 5; // Only consider the first n sequences (5 matches the example in the upstream C code).
     let seqs: Vec<&[u8]> = vec![
         b"CGTCAATCTATCGAAGCATACGCGGGCAGAGC",
         b"CCACGTCAATCTATCGAAGCATACGCGGCAGC",

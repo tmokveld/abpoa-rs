@@ -438,6 +438,12 @@ impl Parameters {
     }
 
     /// Configure adaptive band parameters.
+    ///
+    /// abPOA computes the effective band width as `w = wb + floor(wf * qlen)` when `wb >= 0`.
+    /// Setting `wb < 0` disables banding (full DP).
+    ///
+    /// Note: extremely small effective bands can trigger upstream abPOA fatal exits in the SIMD
+    /// backtracking code (e.g. `[simd_abpoa_align_sequence_to_subgraph] Error in ag_backtrack.`).
     pub fn set_band(&mut self, extra_b: i32, extra_f: f32) -> &mut Self {
         // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
         unsafe {
@@ -447,6 +453,16 @@ impl Parameters {
         }
         self.mark_dirty();
         self
+    }
+
+    /// Current adaptive band settings (`wb`, `wf`).
+    ///
+    /// abPOA computes the effective band width as `w = wb + floor(wf * qlen)` when `wb >= 0`.
+    /// Setting `wb < 0` disables banding (full DP).
+    pub fn band(&self) -> (i32, f32) {
+        // Safety: `raw` is uniquely owned and points to a live `abpoa_para_t`.
+        let raw = unsafe { self.raw.as_ref() };
+        (raw.wb, raw.wf)
     }
 
     /// Configure the Z-drop score in extension alignment.
@@ -1290,6 +1306,7 @@ mod tests {
                 .set_scoring_scheme(Scoring::linear(-1, 2, 3))
                 .is_err()
         );
+        assert!(params.set_scoring_scheme(Scoring::linear(0, 1, 1)).is_ok());
         assert!(params.set_scoring_scheme(Scoring::linear(1, 1, 0)).is_err());
         assert!(
             params

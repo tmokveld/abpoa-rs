@@ -1,7 +1,7 @@
 use super::*;
 use crate::encode::{decode_aa, decode_dna, encode_dna};
 use crate::result::EncodedCluster;
-use crate::{EncodedMsaResult, EncodedMsaView, MsaResult, OutputMode, SentinelNode};
+use crate::{EncodedMsaResult, EncodedMsaView, Error, MsaResult, OutputMode, SentinelNode};
 use std::{
     process,
     time::{SystemTime, UNIX_EPOCH},
@@ -144,6 +144,29 @@ fn dna_msa_variants() {
 
     assert_eq!(qual_result.msa.len(), sequences_quality.len());
     assert!(!qual_result.clusters.is_empty());
+}
+
+#[test]
+fn rejects_negative_quality_weights() {
+    let sequences = [b"ACGT".as_ref(), b"ACGT".as_ref()];
+    let qual_a = [30, -1, 30, 30];
+    let qual_b = [10, 10, 10, 10];
+    let qualities: [&[i32]; 2] = [qual_a.as_slice(), qual_b.as_slice()];
+
+    let mut aligner = Aligner::new().unwrap();
+    let err = aligner
+        .msa(SequenceBatch::from_sequences(&sequences).with_quality_weights(&qualities))
+        .unwrap_err();
+
+    match err {
+        Error::InvalidInput(msg) => {
+            assert!(
+                msg.contains("quality weights must be non-negative"),
+                "expected quality-weight validation error, got: {msg}"
+            );
+        }
+        other => panic!("expected InvalidInput, got {other:?}"),
+    }
 }
 
 #[test]

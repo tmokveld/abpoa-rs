@@ -1,4 +1,4 @@
-//! Compares the high-level msa helper with an equivalent manual graph-building flow
+//! Compares the high-level msa helper with an equivalent manual graph-building flow.
 
 use abpoa::{
     AlignMode, Aligner, Alphabet, ConsensusAlgorithm, Parameters, Result, Scoring, SequenceBatch,

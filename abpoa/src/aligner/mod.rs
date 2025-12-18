@@ -320,6 +320,11 @@ fn validate_quality_weights<'a>(
                 "quality weights must match each sequence length".into(),
             ));
         }
+        if row.iter().any(|weight| *weight < 0) {
+            return Err(Error::InvalidInput(
+                "quality weights must be non-negative".into(),
+            ));
+        }
     }
     Ok(Some(weights))
 }
