@@ -2,7 +2,6 @@
 
 use abpoa::encode::encode_dna;
 use abpoa::{Aligner, Alphabet, NodeId, Parameters, Result, SentinelNode, SubgraphRange};
-use std::convert::TryFrom;
 
 fn main() -> Result<()> {
     let sequences: Vec<&[u8]> = vec![
@@ -16,14 +15,13 @@ fn main() -> Result<()> {
     let encoded: Vec<Vec<u8>> = sequences.iter().map(|seq| encode_dna(seq)).collect();
     let max_len = encoded.iter().map(Vec::len).max().unwrap_or(0);
     aligner.reset(max_len)?;
-    let total_reads = i32::try_from(sequences.len()).unwrap();
 
     let whole_graph = SubgraphRange {
         beg: SentinelNode::Source.as_node_id(),
         end: SentinelNode::Sink.as_node_id(),
     };
     let first = aligner.align_sequence_to_subgraph(whole_graph, &encoded[0])?;
-    aligner.add_subgraph_alignment(whole_graph, &encoded[0], &first, 0, total_reads, false)?;
+    aligner.add_subgraph_alignment(whole_graph, &encoded[0], &first, 0, false)?;
     if first.cigar_len() > 0 {
         let graph = aligner.graph()?;
         let pretty = first.format_alignment(&graph, &encoded[0], Alphabet::Dna)?;
@@ -42,7 +40,6 @@ fn main() -> Result<()> {
             seq,
             &alignment,
             idx as i32,
-            total_reads,
             false,
         )?;
         if alignment.cigar_len() > 0 {

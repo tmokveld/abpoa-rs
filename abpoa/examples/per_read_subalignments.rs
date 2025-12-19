@@ -51,7 +51,6 @@ fn main() -> Result<()> {
         .max()
         .unwrap_or(0);
     aligner.reset(max_len)?;
-    let total_reads = seqs.iter().take(first_n).len() as i32;
 
     let whole = SubgraphRange {
         beg: SentinelNode::Source.as_node_id(),
@@ -74,7 +73,7 @@ fn main() -> Result<()> {
             let pretty = res.format_alignment(&graph, seq, Alphabet::Dna)?;
             println!("alignment for read {}:\n{}\n", idx + 1, pretty);
         }
-        aligner.add_subgraph_alignment(range, seq, &res, idx as i32, total_reads, false)?;
+        aligner.add_subgraph_alignment(range, seq, &res, idx as i32, false)?;
     }
 
     let result = aligner.finalize_msa()?;

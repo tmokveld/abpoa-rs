@@ -56,7 +56,7 @@ fn raw_alignment_exposes_cigar_and_counts() {
     aligner.reset(max_len).unwrap();
 
     let first = aligner.align_sequence_raw(&ref_seq).unwrap();
-    aligner.add_alignment(&ref_seq, &first, 0, 2).unwrap();
+    aligner.add_alignment(&ref_seq, &first, 0).unwrap();
 
     let second = aligner.align_sequence_raw(&query).unwrap();
 
@@ -292,10 +292,10 @@ fn graph_alignment_round_trip() {
     aligner.reset(max_len).unwrap();
 
     let first = aligner.align_sequence_raw(&seqs[0]).unwrap();
-    aligner.add_alignment(&seqs[0], &first, 0, 2).unwrap();
+    aligner.add_alignment(&seqs[0], &first, 0).unwrap();
 
     let second = aligner.align_sequence_raw(&seqs[1]).unwrap();
-    aligner.add_alignment(&seqs[1], &second, 1, 2).unwrap();
+    aligner.add_alignment(&seqs[1], &second, 1).unwrap();
 
     let params_ptr = {
         let params = aligner.params_mut();
@@ -317,6 +317,39 @@ fn graph_alignment_round_trip() {
         result.clusters[0].consensus, expected.clusters[0].consensus,
         "incremental consensus should match one-shot run"
     );
+}
+
+#[test]
+fn add_alignment_rejects_negative_read_id() {
+    let mut aligner = Aligner::new().unwrap();
+
+    let seqs = [encode_dna(b"ACGT")];
+    let max_len = seqs[0].len();
+    aligner.reset(max_len).unwrap();
+
+    let first = aligner.align_sequence_raw(&seqs[0]).unwrap();
+    let err = aligner.add_alignment(&seqs[0], &first, -1).unwrap_err();
+    assert!(matches!(err, Error::InvalidInput(_)));
+}
+
+#[test]
+fn add_subgraph_alignment_rejects_negative_read_id() {
+    let mut aligner = Aligner::new().unwrap();
+
+    let seqs = [encode_dna(b"ACGT")];
+    let max_len = seqs[0].len();
+    aligner.reset(max_len).unwrap();
+
+    let range = SubgraphRange {
+        beg: SentinelNode::Source.as_node_id(),
+        end: SentinelNode::Sink.as_node_id(),
+    };
+
+    let first = aligner.align_sequence_to_subgraph(range, &seqs[0]).unwrap();
+    let err = aligner
+        .add_subgraph_alignment(range, &seqs[0], &first, -1, false)
+        .unwrap_err();
+    assert!(matches!(err, Error::InvalidInput(_)));
 }
 
 #[test]
@@ -392,7 +425,6 @@ fn subgraph_alignment_matches_one_shot() {
     let max_len = seqs.iter().map(Vec::len).max().unwrap();
     aligner.reset(max_len).unwrap();
 
-    let total_reads = to_i32(seqs.len(), "too many sequences for abpoa").unwrap();
     let whole_graph = SubgraphRange {
         beg: SentinelNode::Source.as_node_id(),
         end: SentinelNode::Sink.as_node_id(),
@@ -402,7 +434,7 @@ fn subgraph_alignment_matches_one_shot() {
         .align_sequence_to_subgraph(whole_graph, &seqs[0])
         .unwrap();
     aligner
-        .add_subgraph_alignment(whole_graph, &seqs[0], &first, 0, total_reads, false)
+        .add_subgraph_alignment(whole_graph, &seqs[0], &first, 0, false)
         .unwrap();
 
     let last_node = to_i32(seqs[0].len() + 1, "sequence length exceeds i32").unwrap();
@@ -414,12 +446,12 @@ fn subgraph_alignment_matches_one_shot() {
 
     let second = aligner.align_sequence_to_subgraph(range, &seqs[1]).unwrap();
     aligner
-        .add_subgraph_alignment(range, &seqs[1], &second, 1, total_reads, false)
+        .add_subgraph_alignment(range, &seqs[1], &second, 1, false)
         .unwrap();
 
     let third = aligner.align_sequence_to_subgraph(range, &seqs[2]).unwrap();
     aligner
-        .add_subgraph_alignment(range, &seqs[2], &third, 2, total_reads, false)
+        .add_subgraph_alignment(range, &seqs[2], &third, 2, false)
         .unwrap();
 
     let incremental = aligner.finalize_msa().unwrap();
@@ -452,7 +484,7 @@ fn format_alignment_renders_indels() {
 
         let base_alignment = aligner.align_sequence_raw(&reference).unwrap();
         aligner
-            .add_alignment(&reference, &base_alignment, 0, 2)
+            .add_alignment(&reference, &base_alignment, 0)
             .unwrap();
 
         let query_alignment = aligner.align_sequence_raw(&query).unwrap();

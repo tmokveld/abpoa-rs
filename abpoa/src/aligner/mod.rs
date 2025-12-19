@@ -34,6 +34,7 @@ pub struct Aligner {
     raw: NonNull<sys::abpoa_t>,
     params: Parameters,
     graph_tracks_read_ids: bool,
+    read_id_count: i32,
     // Not Send/Sync: abPOA uses global mutable tables and allocators without locking.
     _not_send_sync: PhantomData<Rc<()>>,
 }
@@ -100,6 +101,38 @@ impl Aligner {
         self.params.get_alphabet().unwrap()
     }
 
+    fn bump_read_id_count(&mut self, read_id: i32) -> Result<i32> {
+        if read_id < 0 {
+            return Err(Error::InvalidInput("read_id must be non-negative".into()));
+        }
+        let required = read_id.checked_add(1).ok_or(Error::InvalidInput(
+            "read_id exceeds supported range".into(),
+        ))?;
+        if required > self.read_id_count {
+            self.read_id_count = required;
+        }
+        Ok(self.read_id_count)
+    }
+
+    fn set_read_id_count(&mut self, total_reads: i32) -> Result<()> {
+        if total_reads < 0 {
+            return Err(Error::InvalidInput(
+                "total_reads must be non-negative".into(),
+            ));
+        }
+        if total_reads < self.read_id_count {
+            return Err(Error::InvalidInput(
+                format!(
+                    "total_reads {total_reads} cannot be smaller than existing sequence count {}",
+                    self.read_id_count
+                )
+                .into(),
+            ));
+        }
+        self.read_id_count = total_reads;
+        Ok(())
+    }
+
     fn ensure_sequence_count(&mut self, total_reads: i32) -> Result<()> {
         // Safety: `abs` is allocated alongside the aligner; update the total number of reads the
         // graph accounts for so consensus/MSA generation sizes buffers correctly.
@@ -128,6 +161,18 @@ impl Aligner {
     ) -> Result<()> {
         let seqs = batch.sequences();
         let names = batch.names();
+        let required = read_id_offset
+            .checked_add(to_i32(seqs.len(), "too many sequences for abpoa")?)
+            .ok_or(Error::InvalidInput("too many sequences for abpoa".into()))?;
+        if total_reads < required {
+            return Err(Error::InvalidInput(
+                format!(
+                    "total_reads {total_reads} cannot be smaller than required {required}"
+                )
+                .into(),
+            ));
+        }
+        self.set_read_id_count(total_reads)?;
 
         let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };
         if abs_ptr.is_null() {
@@ -264,7 +309,7 @@ impl Aligner {
         graph.set_is_set_msa_rank(0);
     }
 
-    fn sequence_count(&self) -> Result<i32> {
+    fn sequence_count(&mut self) -> Result<i32> {
         // Safety: `abs` is owned alongside the aligner and valid for the lifetime of `self`.
         let abs = unsafe { (*self.as_ptr()).abs };
         if abs.is_null() {
@@ -272,7 +317,9 @@ impl Aligner {
         }
         // Safety: we only read a single integer field.
         let count = unsafe { (*abs).n_seq };
-        Ok(count.max(0))
+        let count = count.max(0);
+        self.read_id_count = count;
+        Ok(count)
     }
 
     fn reset_cached_outputs(&mut self) -> Result<()> {

@@ -144,6 +144,7 @@ impl Aligner {
         } else if !uses_read_ids {
             self.graph_tracks_read_ids = false;
         }
+        self.read_id_count = self.sequence_count()?;
         Ok(())
     }
 
@@ -252,20 +253,9 @@ impl Aligner {
         weights: Option<&[i32]>,
         res: &RawAlignment,
         read_id: i32,
-        total_reads: i32,
     ) -> Result<()> {
         if encoded_seq.is_empty() {
             return Err(Error::InvalidInput("cannot add an empty sequence".into()));
-        }
-        if read_id < 0 || total_reads <= 0 {
-            return Err(Error::InvalidInput(
-                "read_id and total_reads must be non-negative, total_reads > 0".into(),
-            ));
-        }
-        if read_id >= total_reads {
-            return Err(Error::InvalidInput(
-                format!("read_id {read_id} out of range 0..{total_reads}").into(),
-            ));
         }
         if let Some(w) = weights {
             if w.len() != encoded_seq.len() {
@@ -275,6 +265,7 @@ impl Aligner {
             }
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
+        let total_reads = self.bump_read_id_count(read_id)?;
         self.ensure_sequence_count(total_reads)?;
 
         if weights.is_some() {
@@ -323,9 +314,8 @@ impl Aligner {
         encoded_seq: &[u8],
         res: &RawAlignment,
         read_id: i32,
-        total_reads: i32,
     ) -> Result<()> {
-        self.add_alignment_inner(encoded_seq, None, res, read_id, total_reads)
+        self.add_alignment_inner(encoded_seq, None, res, read_id)
     }
 
     /// Add an aligned sequence to the graph using per-base quality weights.
@@ -335,9 +325,8 @@ impl Aligner {
         weights: &[i32],
         res: &RawAlignment,
         read_id: i32,
-        total_reads: i32,
     ) -> Result<()> {
-        self.add_alignment_inner(encoded_seq, Some(weights), res, read_id, total_reads)
+        self.add_alignment_inner(encoded_seq, Some(weights), res, read_id)
     }
 
     fn align_and_add_batch(
@@ -345,7 +334,6 @@ impl Aligner {
         encoded: &[Vec<u8>],
         quality_weights: Option<&[&[i32]]>,
         read_id_offset: i32,
-        total_reads: i32,
     ) -> Result<()> {
         let alphabet = self.alphabet();
         let (amb_strand, max_mat) = {
@@ -381,7 +369,7 @@ impl Aligner {
 
             if let Some(is_rc_ptr) = is_rc_ptr {
                 // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
-                // is within the `total_reads` bound ensured by `ensure_sequence_count`.
+                // is within the allocated `abs` capacity set by `store_batch_in_abs`.
                 unsafe {
                     *is_rc_ptr.add(read_id as usize) = 0;
                 }
@@ -440,7 +428,6 @@ impl Aligner {
                         rc_row,
                         &alignment,
                         read_id,
-                        total_reads,
                     )?;
                 } else {
                     self.add_alignment_with_quality(
@@ -448,17 +435,16 @@ impl Aligner {
                         row,
                         &alignment,
                         read_id,
-                        total_reads,
                     )?;
                 }
             } else {
-                self.add_alignment(seq_to_add, &alignment, read_id, total_reads)?;
+                self.add_alignment(seq_to_add, &alignment, read_id)?;
             }
 
             if is_rc {
                 if let Some(is_rc_ptr) = is_rc_ptr {
                     // Safety: `is_rc_ptr` is allocated to `m_seq` entries by abPOA and `read_id`
-                    // is within the `total_reads` bound ensured by `ensure_sequence_count`
+                    // is within the allocated `abs` capacity set by `store_batch_in_abs`
                     unsafe {
                         *is_rc_ptr.add(read_id as usize) = 1;
                     }
@@ -476,23 +462,13 @@ impl Aligner {
         encoded_seq: &[u8],
         res: &RawAlignment,
         read_id: i32,
-        total_reads: i32,
         include_both_ends: bool,
     ) -> Result<()> {
         if encoded_seq.is_empty() {
             return Err(Error::InvalidInput("cannot add an empty sequence".into()));
         }
-        if read_id < 0 || total_reads <= 0 {
-            return Err(Error::InvalidInput(
-                "read_id and total_reads must be non-negative, total_reads > 0".into(),
-            ));
-        }
-        if read_id >= total_reads {
-            return Err(Error::InvalidInput(
-                format!("read_id {read_id} out of range 0..{total_reads}").into(),
-            ));
-        }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
+        let total_reads = self.bump_read_id_count(read_id)?;
         self.ensure_sequence_count(total_reads)?;
         let (beg, end) = range.as_raw();
 
@@ -551,7 +527,7 @@ impl Aligner {
         let total_reads = to_i32(encoded.len(), "too many sequences for abpoa")?;
         self.store_batch_in_abs(&batch, 0, total_reads)?;
         let quality_weights = batch.quality_weights();
-        self.align_and_add_batch(&encoded, quality_weights, 0, total_reads)?;
+        self.align_and_add_batch(&encoded, quality_weights, 0)?;
 
         Ok(())
     }
@@ -576,7 +552,7 @@ impl Aligner {
 
         self.store_batch_in_abs(&batch, current, total_reads)?;
         let quality_weights = batch.quality_weights();
-        self.align_and_add_batch(&encoded, quality_weights, current, total_reads)?;
+        self.align_and_add_batch(&encoded, quality_weights, current)?;
 
         Ok(())
     }

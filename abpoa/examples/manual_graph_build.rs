@@ -50,21 +50,20 @@ fn main() -> Result<()> {
         .set_scoring_scheme(Scoring::convex(2, 4, 4, 2, 24, 1))?
         .set_consensus(ConsensusAlgorithm::HeaviestBundle, 1, 0.0)?
         .set_verbosity(Verbosity::None);
-    let mut manual = Aligner::with_params(manual_params)?;
+    let mut manual_aligner = Aligner::with_params(manual_params)?;
     let encoded: Vec<Vec<u8>> = sequences.iter().map(|s| encode_dna(s)).collect();
     let max_len = encoded.iter().map(Vec::len).max().unwrap_or(0);
-    manual.reset(max_len)?; // Reset the aligner to the maximum length of the sequences
-    let total_reads = sequences.len() as i32;
+    manual_aligner.reset(max_len)?; // Reset the aligner to the maximum length of the sequences
     for (idx, seq) in encoded.iter().enumerate() {
-        let aln = manual.align_sequence_raw(seq)?; // Align the sequence
+        let aln = manual_aligner.align_sequence_raw(seq)?; // Align the sequence
         if aln.cigar_len() > 0 {
-            let graph = manual.graph()?; // Render per-read alignment before mutating the graph
+            let graph = manual_aligner.graph()?; // Render per-read alignment before mutating the graph
             let pretty = aln.format_alignment(&graph, seq, Alphabet::Dna)?;
             println!("Read {} alignment:\n{}\n", idx + 1, pretty);
         }
-        manual.add_alignment(seq, &aln, idx as i32, total_reads)?; // Add the alignment to the graph
+        manual_aligner.add_alignment(seq, &aln, idx as i32)?; // Add the alignment to the graph
     }
-    let manual_result = manual.finalize_msa()?; // Finalize the MSA
+    let manual_result = manual_aligner.finalize_msa()?; // Finalize the MSA
 
     assert_eq!(manual_result.msa.len(), truth.len());
     for (row, expected) in manual_result.msa.iter().zip(truth.iter()) {

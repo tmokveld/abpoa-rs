@@ -21,6 +21,7 @@ impl Aligner {
             raw,
             params,
             graph_tracks_read_ids: true,
+            read_id_count: 0,
             _not_send_sync: PhantomData,
         })
     }
@@ -64,6 +65,7 @@ impl Aligner {
         unsafe { sys::abpoa_reset(self.as_mut_ptr(), params_ptr, ref_len) };
         // `abpoa_reset` clears the graph; read-id tracking starts fresh.
         self.graph_tracks_read_ids = true;
+        self.read_id_count = 0;
         Ok(())
     }
 }
