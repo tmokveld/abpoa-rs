@@ -56,8 +56,18 @@ impl Aligner {
             .map(|seq| to_i32(seq.len(), "sequence length exceeds i32"))
             .collect::<Result<_>>()?;
 
-        let max_len = encoded.iter().map(Vec::len).max().unwrap_or(0);
-        self.reset(max_len)?;
+        // abpoa_msa only resets when abs->n_seq <= 0; clear it to avoid a redundant reset.
+        // Safety: `self` owns the underlying aligner and its `abs` pointer is valid here.
+        let abs_ptr = unsafe { (*self.as_mut_ptr()).abs };
+        if abs_ptr.is_null() {
+            return Err(Error::NullPointer("abpoa sequence container was null"));
+        }
+        self.graph_tracks_read_ids = true;
+        self.read_id_count = 0;
+        // Safety: `abs_ptr` is owned by this aligner; clearing n_seq forces abpoa_msa to reset.
+        unsafe {
+            (*abs_ptr).n_seq = 0;
+        }
 
         let n_seq = to_i32(encoded.len(), "too many sequences for abpoa")?;
         let mut seq_ptrs: Vec<*mut u8> =
