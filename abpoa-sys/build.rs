@@ -13,6 +13,8 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_triple = env::var("TARGET").unwrap_or_default();
     let is_x86 = matches!(target_arch.as_str(), "x86_64" | "x86" | "i686");
+    let is_arm = matches!(target_arch.as_str(), "aarch64" | "arm" | "arm64");
+    let is_riscv = target_arch.starts_with("riscv");
     let is_linux = target_os == "linux";
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -80,9 +82,11 @@ fn main() {
         base_build.define("SIMDE_ENABLE_NATIVE_ALIASES", None);
         clang_args.push("-DUSE_SIMDE".into());
         clang_args.push("-DSIMDE_ENABLE_NATIVE_ALIASES".into());
-        // abPOA expects __AVX2__ even on ARM to pick the wider SIMD kernels when using SIMDe
-        if matches!(target_arch.as_str(), "aarch64" | "arm" | "arm64") {
+        // abPOA expects __AVX2__ on ARM/RISC-V to pick the validated wider SIMDe kernels.
+        if is_arm || is_riscv {
             clang_args.push("-D__AVX2__".into());
+        }
+        if is_arm {
             if target_os == "macos" {
                 clang_args.push("-mcpu=apple-m1".into());
             } else {
@@ -134,9 +138,11 @@ fn main() {
         if use_simde {
             align_build.define("USE_SIMDE", None);
             align_build.define("SIMDE_ENABLE_NATIVE_ALIASES", None);
-            // abPOA expects __AVX2__ even on ARM to pick the wider SIMD kernels when using SIMDe
-            if matches!(target_arch.as_str(), "aarch64" | "arm" | "arm64") {
+            // abPOA expects __AVX2__ on ARM/RISC-V to pick the validated wider SIMDe kernels.
+            if is_arm || is_riscv {
                 align_build.define("__AVX2__", None);
+            }
+            if is_arm {
                 if target_os == "macos" {
                     align_build.flag_if_supported("-mcpu=apple-m1");
                 } else {
@@ -256,12 +262,28 @@ fn build_dispatch_variants(
         b.compile(name);
     };
 
-    // SSE2 variant (clear __SSE4_1__ to force SSE2, mirrors upstream Makefile)
-    compile_variant("abpoa_align_simd_sse2", &["-msse2", "-U__SSE4_1__"]);
+    // Lower-ISA builds must clear higher-ISA macros that can be pre-defined by toolchain defaults.
+    // This mirrors upstream CMake's dispatch build and prevents objects from exporting the wrong
+    // SIMD-prefixed symbols when users build with a high baseline CFLAGS.
+    compile_variant(
+        "abpoa_align_simd_sse2",
+        &[
+            "-msse2",
+            "-mno-avx512bw",
+            "-mno-avx2",
+            "-mno-avx",
+            "-mno-sse4.2",
+            "-mno-sse4.1",
+            "-U__SSE4_1__",
+        ],
+    );
     // SSE4.1 variant
-    compile_variant("abpoa_align_simd_sse41", &["-msse4.1"]);
+    compile_variant(
+        "abpoa_align_simd_sse41",
+        &["-msse4.1", "-mno-avx512bw", "-mno-avx2", "-mno-avx"],
+    );
     // AVX2 variant
-    compile_variant("abpoa_align_simd_avx2", &["-mavx2"]);
+    compile_variant("abpoa_align_simd_avx2", &["-mavx2", "-mno-avx512bw"]);
     // AVX512BW variant
     compile_variant("abpoa_align_simd_avx512bw", &["-mavx512bw"]);
 }
@@ -278,6 +300,8 @@ fn generate_bindings(
         .allowlist_type("abpoa_.*")
         .allowlist_var("ABPOA_.*")
         .clang_arg("-DABPOA_RUST_BINDGEN=1")
+        .clang_arg("-include")
+        .clang_arg("stdio.h")
         .clang_arg(format!("--target={target_triple}"));
 
     for dir in include_paths {
