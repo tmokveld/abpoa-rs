@@ -265,6 +265,8 @@ impl Aligner {
             }
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
+        // Reject invalid parameters before registering the read.
+        let params_ptr = self.params.as_mut_ptr()?;
         let total_reads = self.bump_read_id_count(read_id)?;
         self.ensure_sequence_count(total_reads)?;
 
@@ -277,7 +279,6 @@ impl Aligner {
             .map(|w| w.as_ptr() as *mut i32)
             .unwrap_or(ptr::null_mut());
 
-        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_add_graph_alignment(
                 self.as_mut_ptr(),
@@ -468,11 +469,12 @@ impl Aligner {
             return Err(Error::InvalidInput("cannot add an empty sequence".into()));
         }
         let qlen = to_i32(encoded_seq.len(), "sequence length exceeds i32")?;
+        // Reject invalid parameters before registering the read.
+        let params_ptr = self.params.as_mut_ptr()?;
         let total_reads = self.bump_read_id_count(read_id)?;
         self.ensure_sequence_count(total_reads)?;
         let (beg, end) = range.as_raw();
 
-        let params_ptr = self.params.as_mut_ptr()?;
         let status = unsafe {
             sys::abpoa_add_subgraph_alignment(
                 self.as_mut_ptr(),
@@ -516,6 +518,8 @@ impl Aligner {
             return Ok(());
         }
 
+        // Reject invalid parameters before clearing the existing output or graph.
+        self.params.as_mut_ptr()?;
         self.reset_cached_outputs()?;
         self.params
             .set_use_quality(batch.quality_weights().is_some());
@@ -542,6 +546,8 @@ impl Aligner {
             return Ok(());
         }
 
+        // Batch metadata is stored before alignment, so validate parameters first.
+        self.params.as_mut_ptr()?;
         let alphabet = self.alphabet();
         let encoded = encode_sequences(new_seqs, alphabet);
         let current = self.sequence_count()?;

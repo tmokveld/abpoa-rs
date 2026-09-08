@@ -45,6 +45,8 @@ impl Aligner {
             ));
         }
 
+        // Reject invalid parameters before clearing the existing output or read counts.
+        let params_ptr = self.params.as_mut_ptr()?;
         self.reset_cached_outputs()?;
         self.params
             .set_use_quality(batch.quality_weights().is_some());
@@ -83,7 +85,6 @@ impl Aligner {
             qual_ptrs.as_mut_ptr()
         };
 
-        let params_ptr = self.params.as_mut_ptr()?;
         let previous_out_gfa = unsafe { params_ptr.as_ref() }
             .ok_or(Error::NullPointer("abpoa parameters pointer was null"))?
             .out_gfa();

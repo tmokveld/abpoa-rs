@@ -414,6 +414,132 @@ fn adding_sequences_updates_graph() {
 }
 
 #[test]
+fn rejected_append_preserves_reads_for_retry() {
+    let mut aligner = Aligner::new().unwrap();
+    aligner
+        .msa_in_place(
+            SequenceBatch::from_sequences(&[b"ACGT"])
+                .unwrap()
+                .with_names(&["first"])
+                .unwrap(),
+        )
+        .unwrap();
+    let nodes: Vec<_> = aligner.graph().unwrap().nodes().collect();
+
+    aligner.params_mut().set_use_read_ids(false);
+    let err = aligner
+        .add_sequences(
+            SequenceBatch::from_sequences(&[b"ACGA"])
+                .unwrap()
+                .with_names(&["second"])
+                .unwrap(),
+        )
+        .unwrap_err();
+    assert!(matches!(err, Error::InvalidInput(_)));
+    {
+        let graph = aligner.graph().unwrap();
+        assert_eq!(graph.sequence_count(), 1);
+        assert_eq!(graph.nodes().collect::<Vec<_>>(), nodes);
+        let first = graph.sequences().get(0).unwrap();
+        assert_eq!(first.sequence.as_bytes(), b"ACGT");
+        assert_eq!(first.name.as_str(), Some("first"));
+    }
+
+    aligner.params_mut().set_use_read_ids(true);
+    aligner
+        .add_sequences(
+            SequenceBatch::from_sequences(&[b"ACGA"])
+                .unwrap()
+                .with_names(&["second"])
+                .unwrap(),
+        )
+        .unwrap();
+    let result = aligner.finalize_msa().unwrap();
+    assert_eq!(result.msa, ["ACGT", "ACGA"]);
+    let graph = aligner.graph().unwrap();
+    assert_eq!(graph.sequence_count(), 2);
+    let second = graph.sequences().get(1).unwrap();
+    assert_eq!(second.sequence.as_bytes(), b"ACGA");
+    assert_eq!(second.name.as_str(), Some("second"));
+}
+
+#[test]
+fn rejected_manual_admission_preserves_reads_for_retry() {
+    for subgraph in [false, true] {
+        let mut aligner = Aligner::new().unwrap();
+        aligner
+            .msa_in_place(SequenceBatch::from_sequences(&[b"ACGT"]).unwrap())
+            .unwrap();
+        let nodes: Vec<_> = aligner.graph().unwrap().nodes().collect();
+        let encoded = encode_dna(b"ACGA");
+        let range = SubgraphRange {
+            beg: SentinelNode::Source.as_node_id(),
+            end: SentinelNode::Sink.as_node_id(),
+        };
+        let alignment = if subgraph {
+            aligner.align_sequence_to_subgraph(range, &encoded).unwrap()
+        } else {
+            aligner.align_sequence_raw(&encoded).unwrap()
+        };
+        let add = |aligner: &mut Aligner| {
+            if subgraph {
+                aligner.add_subgraph_alignment(range, &encoded, &alignment, 1, true)
+            } else {
+                aligner.add_alignment(&encoded, &alignment, 1)
+            }
+        };
+
+        aligner.params_mut().set_use_read_ids(false);
+        assert!(matches!(add(&mut aligner), Err(Error::InvalidInput(_))));
+        assert_eq!(aligner.graph().unwrap().sequence_count(), 1);
+        assert_eq!(aligner.graph().unwrap().nodes().collect::<Vec<_>>(), nodes);
+
+        aligner.params_mut().set_use_read_ids(true);
+        add(&mut aligner).unwrap();
+        assert_eq!(aligner.graph().unwrap().sequence_count(), 2);
+        assert_eq!(aligner.finalize_msa().unwrap().msa, ["ACGT", "ACGA"]);
+    }
+}
+
+#[test]
+fn rejected_replacement_preserves_existing_reads() {
+    for in_place in [false, true] {
+        let mut aligner = Aligner::new().unwrap();
+        let original = aligner
+            .msa(SequenceBatch::from_sequences(&[b"ACGT"]).unwrap())
+            .unwrap();
+        let nodes: Vec<_> = aligner.graph().unwrap().nodes().collect();
+
+        aligner.params_mut().set_use_read_ids(false);
+        let batch = SequenceBatch::from_sequences(&[b"ACGA"]).unwrap();
+        let result = if in_place {
+            aligner.msa_in_place(batch)
+        } else {
+            aligner.msa(batch).map(|_| ())
+        };
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+        {
+            let graph = aligner.graph().unwrap();
+            assert_eq!(graph.sequence_count(), 1);
+            assert_eq!(graph.nodes().collect::<Vec<_>>(), nodes);
+            assert!(graph.has_consensus());
+            assert_eq!(
+                graph.sequences().get(0).unwrap().sequence.as_bytes(),
+                b"ACGT"
+            );
+        }
+
+        aligner.params_mut().set_use_read_ids(true);
+        assert_eq!(aligner.finalize_msa().unwrap(), original);
+        aligner
+            .add_sequences(SequenceBatch::from_sequences(&[b"ACGA"]).unwrap())
+            .unwrap();
+        assert_eq!(aligner.graph().unwrap().sequence_count(), 2);
+        assert_eq!(aligner.finalize_msa().unwrap().msa, ["ACGT", "ACGA"]);
+    }
+}
+
+#[test]
 fn subgraph_alignment_matches_one_shot() {
     let mut aligner = Aligner::new().unwrap();
 
